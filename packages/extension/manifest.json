@@ -1,0 +1,72 @@
+{
+    "name": "Screen Recorder",
+    "description": "Capture your screen and share your ideas",
+    "version": "1",
+    "manifest_version": 3,
+    "minimum_chrome_version": "116",
+    "action": {
+        "default_icon": {
+            "16": "icons/not-recording.png",
+            "32": "icons/not-recording.png"
+        },
+        "default_popup": "index.html"
+    },
+    "host_permissions": [
+        "https://*/*",
+        "http://*/*",
+        "https://*.convex.cloud/*",
+        "https://*.clerk.accounts.dev/*",
+        "https://*.accounts.dev/*"
+    ],
+    "background": {
+        "service_worker": "sw.js",
+        "type": "module"
+    },
+    "permissions": [
+        "tabCapture",
+        "offscreen",
+        "scripting",
+        "storage",
+        "desktopCapture",
+        "tabs",
+        "activeTab",
+        "downloads",
+        "identity",
+        "cookies"
+    ],
+    "content_scripts": [
+        {
+            "matches": ["https://*/*", "http://*/*"],
+            "js": ["content.js"],
+            "run_at": "document_start",
+            "all_frames": false
+        }
+    ],
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "page-interceptors.js",
+                "video.html",
+                "video.js",
+                "editor.html",
+                "editor.js",
+                "library.html",
+                "library.js",
+                "snapshot-inspector.html",
+                "snapshot-inspector.js",
+                "auth-callback.html",
+                "auth-callback.js",
+                "clerk-sync.html",
+                "auth-page.html",
+                "auth-page.js"
+            ],
+            "matches": [
+                "https://*/*",
+                "http://*/*"
+            ]
+        }
+    ],
+    "content_security_policy": {
+        "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://*.convex.cloud https://*.clerk.accounts.dev https://clerk.clerk.accounts.dev https://*.clerk.com https://*.accounts.dev https://relaxing-fox-80.accounts.dev wss://*.convex.cloud"
+    }
+}

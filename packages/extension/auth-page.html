@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign in with Google</title>
+    <style>
+        html, body {
+            width: 100%;
+        }
+        
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 40px 20px;
+            background: linear-gradient(to bottom, #1e1e2e, #3a3a52);
+            color: white;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 450px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        #clerk-container {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 20px;
+            min-height: 400px;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+        }
+        .spinner {
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-top: 3px solid white;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .success {
+            text-align: center;
+            padding: 40px;
+        }
+        .success h2 {
+            color: #4ade80;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 Sign in with Google</h1>
+        <div id="clerk-container">
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Loading authentication...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://relaxing-fox-80.accounts.dev/.well-known/clerk.js" crossorigin="anonymous"></script>
+    <script src="auth-page.js"></script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "@screenshot/extension",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Screenshot Chrome Extension - Capture your screen and share your ideas",
+  "scripts": {
+    "test": "jest"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
+  "dependencies": {
+    "@clerk/chrome-extension": "^3.1.2",
+    "convex": "^1.33.1"
+  }
+}

@@ -1,0 +1,559 @@
+// ── Inject page-interceptors.js into the page's MAIN world ─────────────────
+// Uses an external script (bypasses CSP restrictions that block inline scripts)
+(function injectInterceptors() {
+    if (document.getElementById('__screenshot_interceptors')) return;
+    try {
+        const s = document.createElement('script');
+        s.id = '__screenshot_interceptors';
+        s.src = chrome.runtime.getURL('page-interceptors.js');
+        const target = document.documentElement || document.head || document.body;
+        if (target) {
+            target.prepend(s);
+        } else {
+            // Fallback: wait for DOM to exist
+            document.addEventListener('DOMContentLoaded', () => {
+                (document.head || document.documentElement).prepend(s);
+            });
+        }
+    } catch (e) {
+        // Extension context may be invalidated
+    }
+})();
+
+/**
+ * Creates a draggable iframe inside a wrapper div with a transparent overlay for drag handling.
+ * 
+ * @param {string} id - The ID of the wrapper element.
+ * @param {string} src - The source URL of the iframe content.
+ * @param {string} styles - The CSS styles for the wrapper element.
+ * @return {HTMLElement} - The draggable wrapper element containing the iframe.
+ */
+const createDraggableIframe = (id, src, styles) => {
+    const wrapper = document.createElement('div');
+    wrapper.id = id;
+    wrapper.style.cssText = styles;
+
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('allow', 'camera; microphone');
+    iframe.src = src;
+    iframe.style.cssText = `
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        border: none;
+        pointer-events: auto;
+    `;
+
+    const dragOverlay = document.createElement('div');
+    dragOverlay.style.cssText = `
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        cursor: grab;
+        z-index: 2;
+        background: transparent;
+    `;
+
+    const resizeHandle = document.createElement('div');
+    resizeHandle.style.cssText = `
+        position: absolute;
+        bottom: 0;
+        right: 0;
+        width: 10px;
+        height: 10px;
+        cursor: nwse-resize;
+        z-index: 1000;
+        background: black;
+        border: 2px solid black;
+        color: black;
+        clip-path: polygon(75% 0%, 100% 50%, 75% 100%, 0% 100%, 25% 50%, 0% 0%);
+    `;
+
+    let isDragging = false;
+    let dragOffsetX, dragOffsetY;
+
+    dragOverlay.addEventListener('mousedown', (event) => {
+        isDragging = true;
+        dragOffsetX = event.clientX - wrapper.offsetLeft;
+        dragOffsetY = event.clientY - wrapper.offsetTop;
+        dragOverlay.style.cursor = 'grabbing';
+    });
+
+    document.addEventListener('mousemove', (event) => {
+        if (isDragging) {
+            wrapper.style.left = `${event.clientX - dragOffsetX}px`;
+            wrapper.style.top = `${event.clientY - dragOffsetY}px`;
+        }
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (isDragging) {
+            isDragging = false;
+            dragOverlay.style.cursor = 'grab';
+        }
+    });
+
+    let isResizing = false;
+    let initialWidth, initialHeight, initialMouseX, initialMouseY;
+
+    resizeHandle.addEventListener('mousedown', (event) => {
+        isResizing = true;
+        initialWidth = wrapper.offsetWidth;
+        initialHeight = wrapper.offsetHeight;
+        initialMouseX = event.clientX;
+        initialMouseY = event.clientY;
+        event.stopPropagation(); // Prevent triggering drag
+    });
+
+    document.addEventListener('mousemove', (event) => {
+        if (isResizing) {
+            const newWidth = initialWidth + (event.clientX - initialMouseX);
+            const newHeight = initialHeight + (event.clientY - initialMouseY);
+            wrapper.style.width = `${Math.max(newWidth, 50)}px`; // Minimum width: 50px
+            wrapper.style.height = `${Math.max(newHeight, 50)}px`; // Minimum height: 50px
+        }
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (isResizing) {
+            isResizing = false;
+        }
+    });
+
+    wrapper.appendChild(iframe);
+    wrapper.appendChild(dragOverlay);
+    wrapper.appendChild(resizeHandle);
+    return wrapper;
+};
+
+
+
+/**
+ * Converts a URL to a data URL
+ */
+const urlToDataUrl = async (url) => {
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Failed to fetch ${url}`);
+        
+        const blob = await response.blob();
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    } catch (error) {
+        console.warn(`Failed to convert ${url} to data URL:`, error);
+        return null;
+    }
+};
+
+/**
+ * Process CSS text to inline background images and other URL references
+ */
+const processCssUrls = async (cssText) => {
+    const urlRegex = /url\(['"]?([^'")\s]+)['"]?\)/g;
+    const urls = [];
+    let match;
+    
+    while ((match = urlRegex.exec(cssText)) !== null) {
+        const url = match[1];
+        if (url && !url.startsWith('data:')) {
+            urls.push({ original: match[0], url: url });
+        }
+    }
+    
+    let processedCss = cssText;
+    for (const urlInfo of urls) {
+        try {
+            const absoluteUrl = new URL(urlInfo.url, document.baseURI).href;
+            const dataUrl = await urlToDataUrl(absoluteUrl);
+            if (dataUrl) {
+                processedCss = processedCss.replace(urlInfo.original, `url(${dataUrl})`);
+            }
+        } catch (error) {
+            console.warn(`Failed to process CSS URL ${urlInfo.url}:`, error);
+        }
+    }
+    
+    return processedCss;
+};
+
+/**
+ * Extracts the full page HTML with inlined styles and all assets
+ * @returns {Promise<string>} - Serialized HTML document with inlined CSS, SVGs, and images
+ */
+const extractPageHtml = async () => {
+    try {
+        // Clone the entire document
+        const docClone = document.documentElement.cloneNode(true);
+        
+        // Remove script tags to prevent execution
+        const scripts = docClone.querySelectorAll('script');
+        scripts.forEach(script => script.remove());
+        
+        // Fetch and inline external CSS stylesheets
+        const linkTags = Array.from(document.querySelectorAll('link[rel="stylesheet"]'));
+        const cssPromises = linkTags.map(async (link) => {
+            try {
+                const href = link.href;
+                if (!href) return null;
+                
+                const response = await fetch(href);
+                if (!response.ok) throw new Error(`Failed to fetch ${href}`);
+                
+                let cssText = await response.text();
+                
+                // Process URLs in CSS (background images, fonts, etc.)
+                cssText = await processCssUrls(cssText);
+                
+                return { cssText, media: link.media || 'all' };
+            } catch (error) {
+                console.warn(`Failed to fetch CSS from ${link.href}:`, error);
+                return null;
+            }
+        });
+        
+        const cssResults = await Promise.all(cssPromises);
+        
+        // Process inline style tags to inline their URLs too
+        const styleTags = Array.from(document.querySelectorAll('style'));
+        const stylePromises = styleTags.map(async (style, index) => {
+            try {
+                const cssText = await processCssUrls(style.textContent);
+                return { cssText, index };
+            } catch (error) {
+                console.warn('Failed to process inline style:', error);
+                return null;
+            }
+        });
+        
+        const styleResults = await Promise.all(stylePromises);
+        
+        // Fetch and inline external SVG files
+        const svgImgTags = Array.from(document.querySelectorAll('img[src$=".svg"], img[src*=".svg?"]'));
+        const svgPromises = svgImgTags.map(async (img, index) => {
+            try {
+                const src = img.src;
+                if (!src) return null;
+                
+                const response = await fetch(src);
+                if (!response.ok) throw new Error(`Failed to fetch ${src}`);
+                
+                const svgText = await response.text();
+                return { svgText, index, element: img };
+            } catch (error) {
+                console.warn(`Failed to fetch SVG from ${img.src}:`, error);
+                return null;
+            }
+        });
+        
+        const svgResults = await Promise.all(svgPromises);
+        
+        // Fetch and inline regular images (jpg, png, gif, webp, etc.)
+        const regularImgTags = Array.from(document.querySelectorAll('img:not([src$=".svg"]):not([src*=".svg?"])'));
+        const imgPromises = regularImgTags.map(async (img) => {
+            try {
+                const src = img.src;
+                if (!src || src.startsWith('data:')) return null;
+                
+                const dataUrl = await urlToDataUrl(src);
+                return { dataUrl, element: img };
+            } catch (error) {
+                console.warn(`Failed to fetch image from ${img.src}:`, error);
+                return null;
+            }
+        });
+        
+        const imgResults = await Promise.all(imgPromises);
+        
+        // Remove ALL link tags (stylesheets and resources)
+        const links = docClone.querySelectorAll('link');
+        links.forEach(link => link.remove());
+        
+        // Inject fetched CSS as style tags in the head
+        const headClone = docClone.querySelector('head');
+        if (headClone) {
+            cssResults.forEach(result => {
+                if (result && result.cssText) {
+                    const styleTag = document.createElement('style');
+                    if (result.media && result.media !== 'all') {
+                        styleTag.setAttribute('media', result.media);
+                    }
+                    styleTag.textContent = result.cssText;
+                    headClone.appendChild(styleTag);
+                }
+            });
+        }
+        
+        // Update inline style tags with processed CSS
+        const clonedStyleTags = docClone.querySelectorAll('style');
+        styleResults.forEach(result => {
+            if (result && result.cssText && clonedStyleTags[result.index]) {
+                clonedStyleTags[result.index].textContent = result.cssText;
+            }
+        });
+        
+        // Replace external SVG img tags with inline SVG content
+        svgResults.forEach(result => {
+            if (result && result.svgText) {
+                const originalImg = result.element;
+                const clonedImg = docClone.querySelector(`img[src="${originalImg.src}"]`);
+                
+                if (clonedImg) {
+                    // Parse SVG text
+                    const parser = new DOMParser();
+                    const svgDoc = parser.parseFromString(result.svgText, 'image/svg+xml');
+                    const svgElement = svgDoc.documentElement;
+                    
+                    // Transfer important attributes from img to svg
+                    if (originalImg.className) {
+                        svgElement.setAttribute('class', originalImg.className);
+                    }
+                    if (originalImg.style.cssText) {
+                        svgElement.setAttribute('style', originalImg.style.cssText);
+                    }
+                    if (originalImg.width) {
+                        svgElement.setAttribute('width', originalImg.width);
+                    }
+                    if (originalImg.height) {
+                        svgElement.setAttribute('height', originalImg.height);
+                    }
+                    if (originalImg.alt) {
+                        svgElement.setAttribute('aria-label', originalImg.alt);
+                    }
+                    
+                    // Replace img with inline SVG
+                    clonedImg.parentNode.replaceChild(
+                        document.importNode(svgElement, true),
+                        clonedImg
+                    );
+                }
+            }
+        });
+        
+        // Replace regular image src with data URLs
+        imgResults.forEach(result => {
+            if (result && result.dataUrl) {
+                const originalImg = result.element;
+                const clonedImg = docClone.querySelector(`img[src="${originalImg.src}"]`);
+                
+                if (clonedImg) {
+                    clonedImg.src = result.dataUrl;
+                }
+            }
+        });
+        
+        // Remove base tag that might affect relative URLs
+        const baseTags = docClone.querySelectorAll('base');
+        baseTags.forEach(base => base.remove());
+        
+        // Remove meta tags that reference external resources
+        const metaTags = docClone.querySelectorAll('meta[http-equiv], meta[name="theme-color"]');
+        metaTags.forEach(meta => meta.remove());
+        
+        // Serialize the document
+        return '<!DOCTYPE html>\n' + docClone.outerHTML;
+    } catch (error) {
+        console.error('Error extracting page HTML:', error);
+        return `<!DOCTYPE html><html><body><h1>Error extracting HTML</h1><pre>${error.message}</pre></body></html>`;
+    }
+};
+
+// Listen for messages from service worker
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.type === 'extract-page-html') {
+        // Handle async extraction
+        extractPageHtml().then(html => {
+            sendResponse({ html });
+        }).catch(error => {
+            console.error('Error in message handler:', error);
+            sendResponse({ html: `<!DOCTYPE html><html><body><h1>Error</h1><pre>${error.message}</pre></body></html>` });
+        });
+        return true; // Keep the message channel open for async response
+    }
+
+    if (request.type === 'extract-console-network') {
+        // Ask the main-world interceptor for buffered logs
+        console.log('[content.js] Requesting console/network logs from page interceptor');
+        
+        const timeout = setTimeout(() => {
+            console.warn('[content.js] Timeout waiting for logs response, returning empty arrays');
+            sendResponse({ consoleLogs: [], networkLogs: [], deviceMeta: null });
+        }, 3000);
+
+        const handler = (event) => {
+            if (event.source !== window) return;
+            if (event.data && event.data.type === '__SCREENSHOT_LOGS_RESPONSE__') {
+                console.log('[content.js] Received logs response:', {
+                    consoleCount: event.data.consoleLogs?.length || 0,
+                    networkCount: event.data.networkLogs?.length || 0,
+                    hasMeta: !!event.data.deviceMeta
+                });
+                window.removeEventListener('message', handler);
+                clearTimeout(timeout);
+                sendResponse({
+                    consoleLogs: event.data.consoleLogs || [],
+                    networkLogs: event.data.networkLogs || [],
+                    deviceMeta: event.data.deviceMeta || null,
+                });
+            }
+        };
+        window.addEventListener('message', handler);
+        window.postMessage({ type: '__SCREENSHOT_GET_LOGS__' }, '*');
+        
+        return true; // async
+    }
+
+    if (request.type === 'capture-full-page') {
+        // Capture full page screenshot by scrolling and stitching
+        console.log('[content.js] Starting full page screenshot capture');
+        
+        (async () => {
+            try {
+                const dataUrl = await captureFullPageScreenshot();
+                sendResponse({ dataUrl });
+            } catch (error) {
+                console.error('[content.js] Full page capture error:', error);
+                sendResponse({ dataUrl: null, error: error.message });
+            }
+        })();
+        
+        return true; // async
+    }
+});
+
+// Helper: force-scroll and wait until the browser has actually painted at the new position
+function forceScrollAndWait(x, y) {
+    return new Promise(resolve => {
+        // Override smooth-scroll behavior temporarily
+        const htmlEl = document.documentElement;
+        const prevBehavior = htmlEl.style.scrollBehavior;
+        htmlEl.style.scrollBehavior = 'auto';
+
+        window.scrollTo({ left: x, top: y, behavior: 'instant' });
+
+        htmlEl.style.scrollBehavior = prevBehavior;
+
+        // Wait two animation frames (one to
+        // commit the scroll, one to paint) + a small safety buffer
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                setTimeout(resolve, 80);
+            });
+        });
+    });
+}
+
+// Function to capture full page screenshot
+async function captureFullPageScreenshot() {
+    console.log('[content.js] captureFullPageScreenshot started');
+
+    const originalScrollX = window.scrollX;
+    const originalScrollY = window.scrollY;
+
+    // Get page dimensions (CSS pixels)
+    const body = document.body;
+    const html = document.documentElement;
+    const pageWidth = Math.max(
+        body.scrollWidth, body.offsetWidth,
+        html.clientWidth, html.scrollWidth, html.offsetWidth
+    );
+    const pageHeight = Math.max(
+        body.scrollHeight, body.offsetHeight,
+        html.clientHeight, html.scrollHeight, html.offsetHeight
+    );
+
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    console.log(`[content.js] Full page: ${pageWidth}x${pageHeight}, viewport: ${viewportWidth}x${viewportHeight}`);
+
+    // Build a list of exact scroll-Y positions that guarantee full vertical
+    // coverage with no gaps.  We advance by viewportHeight each time, but
+    // the browser caps the last scroll at (pageHeight - viewportHeight).
+    // If that cap would leave a gap we add the capped position as well.
+    const yPositions = [];
+    for (let y = 0; y < pageHeight; y += viewportHeight) {
+        yPositions.push(y);
+    }
+    // The browser can never scroll past this maximum
+    const maxScrollY = Math.max(0, pageHeight - viewportHeight);
+    // Make sure the last entry is the max scroll position (covers the page bottom)
+    if (yPositions.length === 0 || yPositions[yPositions.length - 1] < maxScrollY) {
+        yPositions.push(maxScrollY);
+    }
+
+    // Same for horizontal
+    const xPositions = [];
+    for (let x = 0; x < pageWidth; x += viewportWidth) {
+        xPositions.push(x);
+    }
+    const maxScrollX = Math.max(0, pageWidth - viewportWidth);
+    if (xPositions.length === 0 || xPositions[xPositions.length - 1] < maxScrollX) {
+        xPositions.push(maxScrollX);
+    }
+
+    const totalCaptures = xPositions.length * yPositions.length;
+    console.log(`[content.js] Captures needed: ${xPositions.length} cols x ${yPositions.length} rows = ${totalCaptures}`);
+
+    // Create canvas at CSS-pixel size
+    const canvas = document.createElement('canvas');
+    canvas.width = pageWidth;
+    canvas.height = pageHeight;
+    const ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, pageWidth, pageHeight);
+
+    let captureCount = 0;
+
+    // Process rows top-to-bottom (later rows overwrite overlapping areas,
+    // which is fine — they just re-draw the same content).
+    for (const targetY of yPositions) {
+        for (const targetX of xPositions) {
+            // Force instant scroll & wait for paint
+            await forceScrollAndWait(targetX, targetY);
+
+            const actualX = Math.round(window.scrollX);
+            const actualY = Math.round(window.scrollY);
+
+            console.log(`[content.js] Capture ${captureCount + 1}/${totalCaptures}  target(${targetX},${targetY})  actual(${actualX},${actualY})`);
+
+            try {
+                const response = await chrome.runtime.sendMessage({
+                    type: 'capture-viewport-part'
+                });
+
+                if (response && response.dataUrl) {
+                    const img = new Image();
+                    await new Promise((resolve, reject) => {
+                        img.onload = resolve;
+                        img.onerror = reject;
+                        img.src = response.dataUrl;
+                    });
+
+                    // captureVisibleTab returns an image at DPR resolution
+                    // (e.g. 2x on Retina). Draw it scaled down to CSS-pixel
+                    // viewport size, positioned at the actual scroll offset.
+                    ctx.drawImage(img, actualX, actualY, viewportWidth, viewportHeight);
+                    captureCount++;
+                } else {
+                    console.error(`[content.js] No dataUrl for section ${captureCount + 1}`);
+                }
+            } catch (error) {
+                console.error(`[content.js] Error capturing section ${captureCount + 1}:`, error);
+            }
+        }
+    }
+
+    // Restore original scroll position
+    await forceScrollAndWait(originalScrollX, originalScrollY);
+
+    console.log(`[content.js] Full page capture complete. ${captureCount}/${totalCaptures} sections captured`);
+
+    return canvas.toDataURL('image/png');
+}

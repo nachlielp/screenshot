@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Edit Screenshot</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html {
+      width: 100%;
+    }
+
+    body {
+      background: #f5f5f5;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      width: 100%;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #toolbar-header {
+      background: rgba(255, 255, 255, 0.98);
+      backdrop-filter: blur(10px);
+      padding: 12px 20px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      border-bottom: 2px solid #FFC107;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      flex-shrink: 0;
+    }
+
+    #toolbar {
+      background: transparent;
+      border-radius: 12px;
+      padding: 8px 12px;
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .tool-btn {
+      background: transparent;
+      border: none;
+      color: #333;
+      cursor: pointer;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.2s;
+      user-select: none;
+    }
+    .rectangle-btn{
+      font-size: 24px;
+    }
+
+    .tool-btn:hover {
+      background: #fffef5;
+    }
+
+    .tool-btn.active {
+      background: #FFC107;
+      color: #1a1a1a;
+    }
+
+    .tool-btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    .tool-separator {
+      width: 1px;
+      height: 24px;
+      background: #e0e0e0;
+      margin: 0 4px;
+    }
+
+    .color-picker {
+      display: flex;
+      gap: 6px;
+      margin-left: 4px;
+    }
+
+    .color-btn {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      cursor: pointer;
+      transition: border 0.2s;
+    }
+
+    .color-btn.active {
+      border-color: #FFC107;
+      box-shadow: 0 0 0 2px rgba(255, 193, 7, 0.3);
+    }
+
+    #canvas-container {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    #editor-canvas {
+      max-width: 95%;
+      max-height: 95%;
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+      cursor: crosshair;
+    }
+
+    #editor-canvas.grab {
+      cursor: grab;
+    }
+
+    #editor-canvas.grabbing {
+      cursor: grabbing;
+    }
+
+    #text-input-overlay {
+      position: absolute;
+      display: none;
+      z-index: 999;
+    }
+
+    #text-input {
+      font-family: Arial, sans-serif;
+      font-size: 20px;
+      padding: 4px 8px;
+      border: 2px solid #FFC107;
+      background: white;
+      border-radius: 4px;
+      outline: none;
+      min-width: 100px;
+    }
+
+    .icon {
+      width: 18px;
+      height: 18px;
+    }
+
+    #done-btn {
+      background: #FFC107;
+      color: #1a1a1a;
+      margin-left: 4px;
+      font-weight: 600;
+    }
+
+    #done-btn:hover {
+      background: #FFD54F;
+    }
+
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      background: #e0e0e0;
+      border-radius: 3px;
+      height: 4px;
+      outline: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #FFC107;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #FFC107;
+      cursor: pointer;
+      border: none;
+    }
+
+    #loading {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #333;
+      font-size: 18px;
+      z-index: 2000;
+    }
+
+    .confirm-overlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(17, 17, 17, 0.45);
+      backdrop-filter: blur(10px);
+      z-index: 3000;
+    }
+
+    .confirm-overlay.open {
+      display: flex;
+    }
+
+    .confirm-modal {
+      width: min(100%, 420px);
+      background: linear-gradient(180deg, #ffffff 0%, #fffdf5 100%);
+      border: 1px solid rgba(255, 193, 7, 0.35);
+      border-radius: 20px;
+      box-shadow: 0 28px 70px rgba(0, 0, 0, 0.28);
+      padding: 24px;
+    }
+
+    .confirm-accent {
+      width: 56px;
+      height: 6px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #FFC107 0%, #FF8F00 100%);
+      margin-bottom: 18px;
+    }
+
+    .confirm-modal h2 {
+      font-size: 24px;
+      color: #1a1a1a;
+      margin-bottom: 10px;
+    }
+
+    .confirm-modal p {
+      color: #5c5c5c;
+      line-height: 1.5;
+      font-size: 15px;
+    }
+
+    .confirm-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 24px;
+    }
+
+    .confirm-btn {
+      border: none;
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+    }
+
+    .confirm-btn:hover {
+      transform: translateY(-1px);
+    }
+
+    .confirm-btn.cancel {
+      background: #fff;
+      color: #333;
+      border: 1px solid #ddd;
+    }
+
+    .confirm-btn.cancel:hover {
+      border-color: #FFC107;
+      box-shadow: 0 8px 18px rgba(255, 193, 7, 0.12);
+    }
+
+    .confirm-btn.confirm {
+      background: #FFC107;
+      color: #1a1a1a;
+    }
+
+    .confirm-btn.confirm:hover {
+      background: #FFD54F;
+      box-shadow: 0 10px 22px rgba(255, 193, 7, 0.2);
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">Loading screenshot...</div>
+
+  <div id="toolbar-header" style="display: none;">
+    <div id="toolbar">
+      <button class="tool-btn" id="undo-btn" title="Undo" disabled>
+        <span>↩</span>
+      </button>
+      <button class="tool-btn" id="redo-btn" title="Redo" disabled>
+        <span>↪</span>
+      </button>
+
+      <div class="tool-separator"></div>
+
+      <button class="tool-btn" id="crop-btn" title="Crop">
+        <span>✂️</span>
+      </button>
+      <button class="tool-btn rectangle-btn" id="rectangle-btn" title="Rectangle">
+        <span>□</span>
+      </button>
+      <button class="tool-btn" id="arrow-btn" title="Arrow">
+        <span>↗️</span>
+      </button>
+      <button class="tool-btn" id="text-btn" title="Text">
+        <span>T</span>
+      </button>
+
+      <div class="tool-separator"></div>
+
+      <div style="display: flex; align-items: center; gap: 8px; color: #333; font-size: 13px;">
+        <label for="thickness-slider" style="display: flex; align-items: center; gap: 6px;">
+          <span>━</span>
+          <input type="range" id="thickness-slider" min="1" max="10" value="3" style="width: 80px;">
+        </label>
+        <span id="thickness-value" style="min-width: 25px;">3px</span>
+      </div>
+
+      <div class="tool-separator"></div>
+
+      <div style="display: flex; align-items: center; gap: 8px; color: #333; font-size: 13px;">
+        <label for="font-size-slider" style="display: flex; align-items: center; gap: 6px;">
+          <span>A</span>
+          <input type="range" id="font-size-slider" min="12" max="48" value="20" style="width: 80px;">
+        </label>
+        <span id="font-size-value" style="min-width: 30px;">20px</span>
+      </div>
+
+      <div class="tool-separator"></div>
+
+      <div class="color-picker">
+        <button class="color-btn active" data-color="#ef4444" style="background: #ef4444;" title="Red"></button>
+        <button class="color-btn" data-color="#f59e0b" style="background: #f59e0b;" title="Orange"></button>
+        <button class="color-btn" data-color="#eab308" style="background: #eab308;" title="Yellow"></button>
+        <button class="color-btn" data-color="#22c55e" style="background: #22c55e;" title="Green"></button>
+        <button class="color-btn" data-color="#3b82f6" style="background: #3b82f6;" title="Blue"></button>
+        <button class="color-btn" data-color="#8b5cf6" style="background: #8b5cf6;" title="Purple"></button>
+        <button class="color-btn" data-color="#ffffff" style="background: #ffffff;" title="White"></button>
+      </div>
+
+      <div class="tool-separator"></div>
+
+      <button class="tool-btn" id="copy-btn" title="Copy to clipboard">
+        <span>📋</span>
+        <span>Copy</span>
+      </button>
+      <button class="tool-btn" id="done-btn" title="Done editing">
+        <span>✓</span>
+        <span>Done</span>
+      </button>
+    </div>
+  </div>
+
+  <div id="canvas-container">
+    <canvas id="editor-canvas"></canvas>
+  </div>
+
+  <div id="text-input-overlay">
+    <input type="text" id="text-input" placeholder="Enter text...">
+  </div>
+
+  <div id="confirm-overlay" class="confirm-overlay" role="presentation">
+    <div class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+      <div class="confirm-accent"></div>
+      <h2 id="confirm-title">Confirm action</h2>
+      <p id="confirm-message">Are you sure?</p>
+      <div class="confirm-actions">
+        <button id="confirm-cancel-btn" class="confirm-btn cancel" type="button">Cancel</button>
+        <button id="confirm-ok-btn" class="confirm-btn confirm" type="button">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="editor.js"></script>
+</body>
+</html>

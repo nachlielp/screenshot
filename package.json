@@ -1,0 +1,14 @@
+{
+  "name": "screenshot",
+  "private": true,
+  "scripts": {
+    "dev:web": "pnpm --filter @screenshot/web dev",
+    "dev:convex": "npx convex dev",
+    "dev": "concurrently \"pnpm dev:convex\" \"pnpm dev:web\"",
+    "build:web": "pnpm --filter @screenshot/web build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "convex": "^1.33.1"
+  }
+}
