@@ -1,32 +1,78 @@
 // Clerk Authentication for Chrome Extension
 // Using Clerk hosted authentication with chrome.identity
-
-// Configuration from .env
-const CLERK_PUBLISHABLE_KEY = 'pk_test_cmVsYXhpbmctZm94LTgwLmNsZXJrLmFjY291bnRzLmRldiQ';
-const CLERK_DOMAIN = 'https://relaxing-fox-80.accounts.dev';
-const CLERK_API_DOMAIN = 'https://relaxing-fox-80.clerk.accounts.dev';
-const CLERK_COOKIE_DOMAINS = [
-  'relaxing-fox-80.accounts.dev',
-  '.relaxing-fox-80.accounts.dev',
-  'relaxing-fox-80.clerk.accounts.dev',
-  '.relaxing-fox-80.clerk.accounts.dev',
-];
-const CLERK_COOKIE_URLS = [CLERK_DOMAIN, CLERK_API_DOMAIN];
+import { getRuntimeConfig } from "./runtime-config.js";
 
 // Storage key for user data
-const AUTH_STORAGE_KEY = 'clerk_auth';
+const LEGACY_AUTH_STORAGE_KEY = 'clerk_auth';
 let currentUser = null;
 let authListeners = [];
 
+async function getAuthStorageKey() {
+  const config = await getRuntimeConfig();
+  return `clerk_auth_${config.environment}`;
+}
+
+function decodeJwtPayload(token) {
+  try {
+    const parts = token?.split(".");
+    if (parts?.length !== 3) {
+      return null;
+    }
+
+    return JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+  } catch {
+    return null;
+  }
+}
+
+function isJwtExpired(token) {
+  const payload = decodeJwtPayload(token);
+  if (!payload?.exp) {
+    return false;
+  }
+
+  return Date.now() >= payload.exp * 1000;
+}
+
+async function tokenMatchesRuntime(token) {
+  if (!token) {
+    return false;
+  }
+
+  const payload = decodeJwtPayload(token);
+  if (!payload?.iss) {
+    return true;
+  }
+
+  const config = await getRuntimeConfig();
+  const validIssuers = new Set([
+    config.clerkDomain,
+    config.clerkApiDomain,
+  ]);
+
+  return validIssuers.has(payload.iss);
+}
+
+async function persistCurrentUser() {
+  const authStorageKey = await getAuthStorageKey();
+  await chrome.storage.local.set({ [authStorageKey]: currentUser });
+}
+
+export async function storeAuthData(userData) {
+  currentUser = userData;
+  await persistCurrentUser();
+}
+
 async function collectClerkCookies() {
+  const config = await getRuntimeConfig();
   const allCookies = [];
 
-  for (const domain of CLERK_COOKIE_DOMAINS) {
+  for (const domain of config.clerkCookieDomains) {
     const cookies = await chrome.cookies.getAll({ domain });
     allCookies.push(...cookies);
   }
 
-  for (const url of CLERK_COOKIE_URLS) {
+  for (const url of config.clerkCookieUrls) {
     const cookies = await chrome.cookies.getAll({ url });
     allCookies.push(...cookies);
   }
@@ -40,11 +86,13 @@ async function collectClerkCookies() {
   });
 }
 
-function pickCookie(cookies, ...names) {
+async function pickCookie(cookies, ...names) {
+  const config = await getRuntimeConfig();
+
   for (const name of names) {
     const exactDomainMatch = cookies.find(cookie =>
       cookie.name === name &&
-      (cookie.domain === 'relaxing-fox-80.accounts.dev' || cookie.domain === 'relaxing-fox-80.clerk.accounts.dev')
+      config.exactCookieDomains.includes(cookie.domain.replace(/^\./, ""))
     );
     if (exactDomainMatch) {
       return exactDomainMatch;
@@ -73,8 +121,9 @@ function extractSessionsFromClientData(clientData) {
 }
 
 async function clearStoredAuth(notify = false) {
+  const authStorageKey = await getAuthStorageKey();
   currentUser = null;
-  await chrome.storage.local.remove([AUTH_STORAGE_KEY]);
+  await chrome.storage.local.remove([authStorageKey, LEGACY_AUTH_STORAGE_KEY]);
   if (notify) {
     notifyAuthChange(null);
   }
@@ -83,9 +132,18 @@ async function clearStoredAuth(notify = false) {
 // Initialize auth by loading from storage
 export async function initializeAuth() {
   try {
-    const result = await chrome.storage.local.get([AUTH_STORAGE_KEY]);
-    if (result[AUTH_STORAGE_KEY]) {
-      currentUser = result[AUTH_STORAGE_KEY];
+    const authStorageKey = await getAuthStorageKey();
+    const result = await chrome.storage.local.get([authStorageKey]);
+    if (result[authStorageKey]) {
+      const storedUser = result[authStorageKey];
+
+      if (!(await tokenMatchesRuntime(storedUser.token))) {
+        console.warn('Stored auth issuer does not match the active environment. Clearing stale auth.');
+        await clearStoredAuth(false);
+        return;
+      }
+
+      currentUser = storedUser;
       console.log('Auth initialized from storage');
     } else {
       console.log('No stored auth found');
@@ -121,7 +179,7 @@ export async function getAuthToken() {
     
     // If token exists and not expired, return it
     if (currentUser?.token && currentUser?.tokenExpiry) {
-      if (Date.now() < currentUser.tokenExpiry) {
+      if (Date.now() < currentUser.tokenExpiry && !isJwtExpired(currentUser.token)) {
         console.log('Using cached token, expires in', Math.round((currentUser.tokenExpiry - Date.now()) / 1000), 'seconds');
         return currentUser.token;
       }
@@ -134,7 +192,7 @@ export async function getAuthToken() {
       if (freshToken) {
         currentUser.token = freshToken;
         currentUser.tokenExpiry = Date.now() + (55 * 1000); // Clerk tokens expire in ~60s
-        await chrome.storage.local.set({ [AUTH_STORAGE_KEY]: currentUser });
+        await persistCurrentUser();
         return freshToken;
       }
 
@@ -164,12 +222,13 @@ export async function getAuthToken() {
 // Get a Convex-specific JWT from Clerk's Frontend API
 async function getConvexToken(sessionId) {
   try {
+    const config = await getRuntimeConfig();
     const uniqueCookies = await collectClerkCookies();
     
     console.log('Available cookies for token fetch:', uniqueCookies.map(c => `${c.name} (${c.domain})`));
     
     // Find the __clerk_db_jwt - needed for dev instance authentication
-    const clerkDbJwt = pickCookie(uniqueCookies, '__clerk_db_jwt');
+    const clerkDbJwt = await pickCookie(uniqueCookies, '__clerk_db_jwt');
     
     if (!clerkDbJwt) {
       console.error('No __clerk_db_jwt cookie found - cannot authenticate with Clerk dev instance');
@@ -180,7 +239,7 @@ async function getConvexToken(sessionId) {
     
     // For Clerk dev instances, pass __clerk_db_jwt as a query parameter
     // Chrome extensions can't send cookies via fetch to third-party domains
-    const url = `${CLERK_API_DOMAIN}/v1/client/sessions/${sessionId}/tokens/convex?__clerk_db_jwt=${encodeURIComponent(clerkDbJwt.value)}`;
+    const url = `${config.clerkApiDomain}/v1/client/sessions/${sessionId}/tokens/convex?__clerk_db_jwt=${encodeURIComponent(clerkDbJwt.value)}`;
     
     const response = await fetch(url, {
       method: 'POST',
@@ -212,8 +271,9 @@ export async function signIn() {
 
 export async function signInWithGoogle() {
   try {
+    const config = await getRuntimeConfig();
     // Open Clerk's sign-in page directly (not an extension page)
-    const signInUrl = `${CLERK_DOMAIN}/sign-in`;
+    const signInUrl = `${config.clerkDomain}/sign-in`;
     await chrome.tabs.create({ 
       url: signInUrl,
       active: true 
@@ -237,15 +297,16 @@ export async function signInWithGoogle() {
 export async function syncClerkSession(options = {}) {
   const { notify = true } = options;
   try {
+    const config = await getRuntimeConfig();
     console.log('Syncing Clerk session from cookies...');
     const allCookies = await collectClerkCookies();
     
     console.log('All unique Clerk cookies:', allCookies.map(c => `${c.name} (${c.domain})`));
     
     // Look for the session cookie
-    const sessionCookie = pickCookie(allCookies, '__session');
-    const clientUat = pickCookie(allCookies, '__client_uat');
-    const clerkDbJwt = pickCookie(allCookies, '__clerk_db_jwt');
+    const sessionCookie = await pickCookie(allCookies, '__session');
+    const clientUat = await pickCookie(allCookies, '__client_uat');
+    const clerkDbJwt = await pickCookie(allCookies, '__clerk_db_jwt');
     
     console.log('Session cookie:', sessionCookie?.value?.substring(0, 30));
     console.log('Client UAT:', clientUat?.value);
@@ -277,8 +338,7 @@ export async function syncClerkSession(options = {}) {
             sessionId: payload.sid
           };
           
-          currentUser = userData;
-          await chrome.storage.local.set({ [AUTH_STORAGE_KEY]: userData });
+          await storeAuthData(userData);
           if (notify) {
             notifyAuthChange(currentUser);
           }
@@ -295,7 +355,7 @@ export async function syncClerkSession(options = {}) {
       console.log('Trying Clerk client API...');
       
       const dbJwtParam = clerkDbJwt ? `&__clerk_db_jwt=${encodeURIComponent(clerkDbJwt.value)}` : '';
-      const clientResponse = await fetch(`${CLERK_API_DOMAIN}/v1/client?_clerk_js_version=5.0.0${dbJwtParam}`);
+      const clientResponse = await fetch(`${config.clerkApiDomain}/v1/client?_clerk_js_version=5.0.0${dbJwtParam}`);
       
       console.log('Client API status:', clientResponse.status);
       
@@ -314,7 +374,7 @@ export async function syncClerkSession(options = {}) {
           
           // Get Convex JWT token
           const tokenResponse = await fetch(
-            `${CLERK_API_DOMAIN}/v1/client/sessions/${session.id}/tokens/convex?_clerk_js_version=5.0.0${dbJwtParam}`,
+            `${config.clerkApiDomain}/v1/client/sessions/${session.id}/tokens/convex?_clerk_js_version=5.0.0${dbJwtParam}`,
             {
               method: 'POST',
             }
@@ -345,8 +405,7 @@ export async function syncClerkSession(options = {}) {
             sessionId: session.id
           };
           
-          currentUser = userData;
-          await chrome.storage.local.set({ [AUTH_STORAGE_KEY]: userData });
+          await storeAuthData(userData);
           if (notify) {
             notifyAuthChange(currentUser);
           }
@@ -375,12 +434,14 @@ export async function signUp() {
 
 export async function signOut() {
   try {
+    const config = await getRuntimeConfig();
     // Clear local storage
     currentUser = null;
-    await chrome.storage.local.remove([AUTH_STORAGE_KEY, '__clerk_db_jwt']);
+    const authStorageKey = await getAuthStorageKey();
+    await chrome.storage.local.remove([authStorageKey, LEGACY_AUTH_STORAGE_KEY, '__clerk_db_jwt']);
     
     // Sign out from Clerk
-    await fetch(`${CLERK_DOMAIN}/v1/client/sign_outs`, {
+    await fetch(`${config.clerkDomain}/v1/client/sign_outs`, {
       method: 'POST',
       credentials: 'include'
     });

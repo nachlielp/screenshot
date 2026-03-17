@@ -1,4 +1,5 @@
 import { isAuthenticated, getCurrentUser, signIn, signInWithGoogle, signOut, onAuthChange, syncClerkSession } from './utils/auth.js';
+import { getRuntimeConfig } from './utils/runtime-config.js';
 
 /**
  * Cache DOM elements for easy access.
@@ -258,8 +259,13 @@ const initializePopup = async () => {
             }
         });
 
-        libraryBtn.addEventListener("click", () => {
-            chrome.tabs.create({ url: 'http://localhost:5173/#/library' });
+        libraryBtn.addEventListener("click", async () => {
+            try {
+                const config = await getRuntimeConfig();
+                chrome.tabs.create({ url: `${config.siteUrl}/#/library` });
+            } catch (error) {
+                console.error('Library URL error:', error);
+            }
         });
 
         // Listen for auth changes

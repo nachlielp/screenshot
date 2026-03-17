@@ -1,7 +1,22 @@
-const CLERK_PUBLISHABLE_KEY = 'pk_test_cmVsYXhpbmctZm94LTgwLmNsZXJrLmFjY291bnRzLmRldiQ';
+import { storeAuthData } from './utils/auth.js';
+import { getRuntimeConfig } from './utils/runtime-config.js';
+
+async function loadClerkScript(clerkDomain) {
+    await new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = `${clerkDomain}/.well-known/clerk.js`;
+        script.crossOrigin = 'anonymous';
+        script.onload = resolve;
+        script.onerror = () => reject(new Error(`Failed to load Clerk script from ${clerkDomain}`));
+        document.head.appendChild(script);
+    });
+}
 
 async function initClerk() {
     try {
+        const config = await getRuntimeConfig();
+        await loadClerkScript(config.clerkDomain);
+
         // Wait for Clerk to load
         while (!window.Clerk) {
             await new Promise(resolve => setTimeout(resolve, 100));
@@ -9,7 +24,7 @@ async function initClerk() {
         
         // Initialize Clerk
         await window.Clerk.load({
-            publishableKey: CLERK_PUBLISHABLE_KEY
+            publishableKey: config.clerkPublishableKey
         });
         
         const signInDiv = document.getElementById('clerk-container');
@@ -115,7 +130,7 @@ async function handleSignInSuccess(user, session) {
         };
         
         // Store in extension storage
-        await chrome.storage.local.set({ 'clerk_auth': userData });
+        await storeAuthData(userData);
         
         // Show success message
         document.getElementById('clerk-container').innerHTML = `

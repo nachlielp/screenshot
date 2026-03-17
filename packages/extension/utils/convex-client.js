@@ -1,8 +1,6 @@
 // Convex client for Chrome Extension
 import { getAuthToken, getCurrentUser, isAuthenticated } from './auth.js';
-
-// Replace with your actual Convex deployment URL after running: npx convex dev
-const CONVEX_URL = 'https://fleet-hound-777.convex.cloud';
+import { getRuntimeConfig } from './runtime-config.js';
 
 function compactObject(obj) {
   return Object.fromEntries(
@@ -46,11 +44,12 @@ function getExtraFieldFromConvexError(errorMessage) {
 }
 
 async function createScreenshotRecord(token, args) {
+  const { convexUrl } = await getRuntimeConfig();
   const ignoredFields = [];
   let currentArgs = { ...args };
 
   while (true) {
-    const screenshotResponse = await fetch(`${CONVEX_URL}/api/mutation`, {
+    const screenshotResponse = await fetch(`${convexUrl}/api/mutation`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -108,6 +107,7 @@ export async function uploadToConvex(blob, filename, mimeType, type, metadata = 
   }
 
   try {
+    const { convexUrl } = await getRuntimeConfig();
     const user = await getCurrentUser();
     const token = await getAuthToken();
     
@@ -133,7 +133,7 @@ export async function uploadToConvex(blob, filename, mimeType, type, metadata = 
     }
 
     // Step 1: Get or create user in Convex
-    const userResponse = await fetch(`${CONVEX_URL}/api/mutation`, {
+    const userResponse = await fetch(`${convexUrl}/api/mutation`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -156,7 +156,7 @@ export async function uploadToConvex(blob, filename, mimeType, type, metadata = 
     }
 
     // Step 2: Generate upload URL for main file
-    const uploadUrlResponse = await fetch(`${CONVEX_URL}/api/mutation`, {
+    const uploadUrlResponse = await fetch(`${convexUrl}/api/mutation`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -194,7 +194,7 @@ export async function uploadToConvex(blob, filename, mimeType, type, metadata = 
     if (htmlSnapshot) {
       try {
         // Generate upload URL for HTML
-        const htmlUploadUrlResponse = await fetch(`${CONVEX_URL}/api/mutation`, {
+        const htmlUploadUrlResponse = await fetch(`${convexUrl}/api/mutation`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -235,7 +235,7 @@ export async function uploadToConvex(blob, filename, mimeType, type, metadata = 
     let consoleLogsStorageId = undefined;
     if (consoleLogs && consoleLogs.length > 0) {
       try {
-        const consoleUploadUrlResponse = await fetch(`${CONVEX_URL}/api/mutation`, {
+        const consoleUploadUrlResponse = await fetch(`${convexUrl}/api/mutation`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -271,7 +271,7 @@ export async function uploadToConvex(blob, filename, mimeType, type, metadata = 
     let networkLogsStorageId = undefined;
     if (networkLogs && networkLogs.length > 0) {
       try {
-        const networkUploadUrlResponse = await fetch(`${CONVEX_URL}/api/mutation`, {
+        const networkUploadUrlResponse = await fetch(`${convexUrl}/api/mutation`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -351,7 +351,8 @@ function generateShareToken() {
  */
 export async function getScreenshotByToken(shareToken) {
   try {
-    const response = await fetch(`${CONVEX_URL}/api/query`, {
+    const { convexUrl } = await getRuntimeConfig();
+    const response = await fetch(`${convexUrl}/api/query`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -384,9 +385,10 @@ export async function getUserScreenshots(limit = 100) {
   }
 
   try {
+    const { convexUrl } = await getRuntimeConfig();
     const token = await getAuthToken();
     
-    const response = await fetch(`${CONVEX_URL}/api/query`, {
+    const response = await fetch(`${convexUrl}/api/query`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -422,9 +424,10 @@ export async function deleteScreenshot(screenshotId) {
   }
 
   try {
+    const { convexUrl } = await getRuntimeConfig();
     const token = await getAuthToken();
     
-    const response = await fetch(`${CONVEX_URL}/api/mutation`, {
+    const response = await fetch(`${convexUrl}/api/mutation`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

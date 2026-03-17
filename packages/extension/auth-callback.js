@@ -1,6 +1,10 @@
+import { getRuntimeConfig } from "./utils/runtime-config.js";
+import { storeAuthData } from "./utils/auth.js";
+
 // This script runs when Clerk redirects back to the extension after authentication
 (async () => {
     try {
+        const config = await getRuntimeConfig();
         console.log('Auth callback received');
         console.log('Full URL:', window.location.href);
         
@@ -18,7 +22,7 @@
         let sessionToken = null;
         try {
             const cookies = await chrome.cookies.getAll({
-                url: 'https://relaxing-fox-80.accounts.dev'
+                url: config.clerkDomain
             });
             
             console.log('Found cookies:', cookies.map(c => ({ name: c.name, value: c.value.substring(0, 20) + '...' })));
@@ -41,7 +45,7 @@
         // Method 2: Try to fetch from Clerk API with credentials
         try {
             console.log('Attempting to fetch session from Clerk API...');
-            const response = await fetch('https://relaxing-fox-80.accounts.dev/v1/client?_clerk_js_version=5', {
+            const response = await fetch(`${config.clerkDomain}/v1/client?_clerk_js_version=5`, {
                 method: 'GET',
                 credentials: 'include',
                 headers: {
@@ -81,10 +85,8 @@
                     
                     console.log('Storing user data:', userData);
                     
-                    await chrome.storage.local.set({ 
-                        'clerk_auth': userData,
-                        'auth_success': true
-                    });
+                    await storeAuthData(userData);
+                    await chrome.storage.local.set({ 'auth_success': true });
                     
                     console.log('✅ Auth data stored successfully!');
                     
@@ -103,16 +105,14 @@
         // Method 3: Check if we at least have a session cookie and store minimal data
         if (sessionToken) {
             console.log('Storing minimal auth data from cookie');
-            await chrome.storage.local.set({ 
-                'clerk_auth': {
-                    token: sessionToken,
-                    tokenExpiry: Date.now() + (50 * 60 * 1000),
-                    email: 'authenticated@user.com',
-                    fullName: 'Authenticated User',
-                    id: 'clerk_user'
-                },
-                'auth_success': true
+            await storeAuthData({
+                token: sessionToken,
+                tokenExpiry: Date.now() + (50 * 60 * 1000),
+                email: 'authenticated@user.com',
+                fullName: 'Authenticated User',
+                id: 'clerk_user'
             });
+            await chrome.storage.local.set({ 'auth_success': true });
             
             console.log('✅ Minimal auth stored');
             setTimeout(() => window.close(), 500);

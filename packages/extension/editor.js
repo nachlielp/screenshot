@@ -1,5 +1,6 @@
 import { getCapture, saveCapture, deleteCapture } from './utils/db.js';
 import { uploadToConvex } from './utils/convex-client.js';
+import { getRuntimeConfig } from './utils/runtime-config.js';
 import { isAuthenticated } from './utils/auth.js';
 
 // Editor state
@@ -466,7 +467,8 @@ async function finishEditing() {
     );
 
     // Build web app preview link
-    const webAppUrl = 'http://localhost:5173';
+    const config = await getRuntimeConfig();
+    const webAppUrl = config.siteUrl;
     const previewLink = `${webAppUrl}/#/snapshot/${result.shareToken}`;
 
     // Copy preview URL to clipboard
