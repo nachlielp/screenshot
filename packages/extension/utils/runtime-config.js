@@ -21,7 +21,7 @@ const ENVIRONMENTS = {
   },
   production: {
     name: "production",
-    convexUrl: "https://fiery-yak-273.convex.cloud",
+    convexUrl: "https://fleet-hound-777.convex.cloud",
     clerkPublishableKey: "pk_live_Y2xlcmsuc25hcC5uYWNobGkuY29tJA",
     clerkApiDomain: "https://clerk.snap.nachli.com",
     cookieDomains: [
