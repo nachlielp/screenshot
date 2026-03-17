@@ -10,7 +10,6 @@ const screenshotButton = document.getElementById("screenshot");
 const bodyElement = document.body;
 const modeToggleSwitch = document.getElementById("modeToggle");
 const modeLabelElement = document.getElementById("modeLabel");
-const htmlCaptureToggle = document.getElementById("htmlCaptureToggle");
 const networkCaptureToggle = document.getElementById("networkCaptureToggle");
 const fullPageToggle = document.getElementById("fullPageToggle");
 
@@ -45,23 +44,6 @@ const toggleThemeMode = () => {
     bodyElement.classList.toggle("light-mode", !isDarkMode);
     modeLabelElement.textContent = isDarkMode ? "🌙 Mode" : "🌞 Mode";
     localStorage.setItem("modeToggle", JSON.stringify(isDarkMode));
-};
-
-/**
- * Loads the HTML capture preference from storage
- */
-const loadHtmlCapturePreference = async () => {
-    const result = await chrome.storage.local.get(["htmlCaptureEnabled"]);
-    const isEnabled = result.htmlCaptureEnabled === true; // Default to false
-    htmlCaptureToggle.checked = isEnabled;
-};
-
-/**
- * Saves the HTML capture preference to storage
- */
-const saveHtmlCapturePreference = async () => {
-    const isEnabled = htmlCaptureToggle.checked;
-    await chrome.storage.local.set({ htmlCaptureEnabled: isEnabled });
 };
 
 /**
@@ -294,12 +276,6 @@ const initializePopup = async () => {
             modeToggleSwitch.addEventListener("change", toggleThemeMode);
         }
         
-        // HTML capture toggle (if exists)
-        if (htmlCaptureToggle) {
-            loadHtmlCapturePreference();
-            htmlCaptureToggle.addEventListener("change", saveHtmlCapturePreference);
-        }
-
         // Network capture toggle (if exists)
         if (networkCaptureToggle) {
             loadNetworkCapturePreference();

@@ -50,3 +50,6 @@ coverage/
 
 # Vite
 packages/web/dist/
+
+# Extension packaging
+extension-upload.zip

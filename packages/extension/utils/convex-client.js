@@ -8,10 +8,9 @@ function compactObject(obj) {
   );
 }
 
-function getUploadArgs(storageId, htmlStorageId, consoleLogsStorageId, networkLogsStorageId, filename, mimeType, blob, type, metadata, deviceMeta) {
+function getUploadArgs(storageId, consoleLogsStorageId, networkLogsStorageId, filename, mimeType, blob, type, metadata, deviceMeta) {
   return compactObject({
     storageId,
-    htmlStorageId,
     consoleLogsStorageId,
     networkLogsStorageId,
     filename,
@@ -96,10 +95,9 @@ async function createScreenshotRecord(token, args) {
  * @param {string} mimeType - The MIME type
  * @param {string} type - The capture type (screenshot, tab-recording, screen-recording)
  * @param {object} metadata - Optional metadata (width, height, duration)
- * @param {string|null} htmlSnapshot - Optional HTML snapshot to upload
  * @returns {Promise<{shareUrl: string, publicUrl: string}>}
  */
-export async function uploadToConvex(blob, filename, mimeType, type, metadata = {}, htmlSnapshot = null, consoleLogs = null, networkLogs = null, deviceMeta = null) {
+export async function uploadToConvex(blob, filename, mimeType, type, metadata = {}, consoleLogs = null, networkLogs = null, deviceMeta = null) {
   // Check if authenticated
   const authenticated = await isAuthenticated();
   if (!authenticated) {
@@ -189,49 +187,7 @@ export async function uploadToConvex(blob, filename, mimeType, type, metadata = 
 
     const { storageId } = await uploadResponse.json();
     
-    // Step 3.5: Upload HTML snapshot if provided
-    let htmlStorageId = undefined;
-    if (htmlSnapshot) {
-      try {
-        // Generate upload URL for HTML
-        const htmlUploadUrlResponse = await fetch(`${convexUrl}/api/mutation`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            path: 'screenshots:generateUploadUrl',
-            args: {},
-          }),
-        });
-
-        if (htmlUploadUrlResponse.ok) {
-          const { value: htmlUploadUrl } = await htmlUploadUrlResponse.json();
-          
-          // Create HTML blob and upload
-          const htmlBlob = new Blob([htmlSnapshot], { type: 'text/html' });
-          const htmlUploadResponse = await fetch(htmlUploadUrl, {
-            method: 'POST',
-            body: htmlBlob,
-            headers: {
-              'Content-Type': 'text/html',
-            },
-          });
-
-          if (htmlUploadResponse.ok) {
-            const htmlResult = await htmlUploadResponse.json();
-            htmlStorageId = htmlResult.storageId;
-            console.log('HTML snapshot uploaded:', htmlStorageId);
-          }
-        }
-      } catch (htmlError) {
-        console.error('Error uploading HTML snapshot (continuing without it):', htmlError);
-        // Continue without HTML if upload fails
-      }
-    }
-
-    // Step 3.6: Upload console logs if provided
+    // Step 3.5: Upload console logs if provided
     let consoleLogsStorageId = undefined;
     if (consoleLogs && consoleLogs.length > 0) {
       try {
@@ -267,7 +223,7 @@ export async function uploadToConvex(blob, filename, mimeType, type, metadata = 
       }
     }
 
-    // Step 3.7: Upload network logs if provided
+    // Step 3.6: Upload network logs if provided
     let networkLogsStorageId = undefined;
     if (networkLogs && networkLogs.length > 0) {
       try {
@@ -306,7 +262,6 @@ export async function uploadToConvex(blob, filename, mimeType, type, metadata = 
     // Step 4: Create screenshot record in database
     const screenshotArgs = getUploadArgs(
       storageId,
-      htmlStorageId,
       consoleLogsStorageId,
       networkLogsStorageId,
       filename,
@@ -326,7 +281,6 @@ export async function uploadToConvex(blob, filename, mimeType, type, metadata = 
     return {
       shareUrl: result.publicUrl || '',
       publicUrl: result.publicUrl || '',
-      htmlPublicUrl: result.htmlPublicUrl || null,
       consoleLogsUrl: result.consoleLogsUrl || null,
       networkLogsUrl: result.networkLogsUrl || null,
       shareToken: result.shareToken || '',

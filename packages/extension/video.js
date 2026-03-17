@@ -7,7 +7,6 @@ console.log(`[Video] Module loaded - ${VERSION}`);
 
 const previewContainer = document.getElementById('preview');
 const downloadBtn = document.getElementById('downloadBtn');
-const downloadHtmlBtn = document.getElementById('downloadHtmlBtn');
 const downloadConsoleBtn = document.getElementById('downloadConsoleBtn');
 const downloadNetworkBtn = document.getElementById('downloadNetworkBtn');
 const shareBtn = document.getElementById('shareBtn');
@@ -60,12 +59,6 @@ async function init() {
     downloadBtn.addEventListener('click', handleDownload);
     shareBtn.addEventListener('click', handleShare);
     
-    // Show HTML download button if htmlSnapshot exists
-    if (currentCapture.htmlSnapshot) {
-      downloadHtmlBtn.style.display = 'flex';
-      downloadHtmlBtn.addEventListener('click', handleDownloadHtml);
-    }
-
     // Show console logs download button if consoleLogs exist
     if (currentCapture.consoleLogs && currentCapture.consoleLogs.length > 0) {
       downloadConsoleBtn.style.display = 'flex';
@@ -94,24 +87,6 @@ function handleDownload() {
   a.href = blobUrl;
   a.download = currentCapture.filename;
   a.click();
-}
-
-function handleDownloadHtml() {
-  if (!currentCapture || !currentCapture.htmlSnapshot) return;
-  
-  // Create a blob from the HTML string
-  const htmlBlob = new Blob([currentCapture.htmlSnapshot], { type: 'text/html' });
-  const htmlBlobUrl = URL.createObjectURL(htmlBlob);
-  
-  // Create download link with .html extension
-  const htmlFilename = currentCapture.filename.replace(/\.(png|jpe?g|webm|mp4)$/i, '.html');
-  const a = document.createElement('a');
-  a.href = htmlBlobUrl;
-  a.download = htmlFilename;
-  a.click();
-  
-  // Clean up the blob URL
-  setTimeout(() => URL.revokeObjectURL(htmlBlobUrl), 100);
 }
 
 function handleDownloadConsole() {
@@ -174,7 +149,6 @@ async function handleShare() {
       currentCapture.mimeType,
       captureType,
       { sourceUrl: currentCapture.sourceUrl || undefined },
-      currentCapture.htmlSnapshot || null,
       currentCapture.consoleLogs || null,
       currentCapture.networkLogs || null,
       currentCapture.deviceMeta || null
@@ -184,7 +158,6 @@ async function handleShare() {
     const previewUrl = new URL(chrome.runtime.getURL('snapshot-inspector.html'));
     const params = new URLSearchParams();
     if (result.publicUrl) params.append('imageUrl', result.publicUrl);
-    if (result.htmlPublicUrl) params.append('url', result.htmlPublicUrl);
     if (result.consoleLogsUrl) params.append('consoleUrl', result.consoleLogsUrl);
     if (result.networkLogsUrl) params.append('networkUrl', result.networkLogsUrl);
     if (currentCapture.sourceUrl) params.append('sourceUrl', currentCapture.sourceUrl);

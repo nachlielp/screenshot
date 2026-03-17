@@ -6,7 +6,8 @@
     "dev:convex": "npx convex dev",
     "dev": "concurrently \"pnpm dev:convex\" \"pnpm dev:web\"",
     "build": "pnpm build:web",
-    "build:web": "pnpm --filter @screenshot/web build"
+    "build:web": "pnpm --filter @screenshot/web build",
+    "zip:ext": "pnpm --filter @screenshot/extension zip"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",

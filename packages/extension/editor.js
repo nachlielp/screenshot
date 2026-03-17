@@ -428,7 +428,6 @@ async function finishEditing() {
       blob,
       existingCapture.filename,
       'image/png',
-      existingCapture.htmlSnapshot,
       existingCapture.consoleLogs,
       existingCapture.networkLogs,
       existingCapture.sourceUrl,
@@ -460,7 +459,6 @@ async function finishEditing() {
       'image/png',
       captureType,
       { sourceUrl: existingCapture.sourceUrl || undefined },
-      existingCapture.htmlSnapshot || null,
       existingCapture.consoleLogs || null,
       existingCapture.networkLogs || null,
       existingCapture.deviceMeta || null

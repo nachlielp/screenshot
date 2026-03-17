@@ -211,14 +211,12 @@ const takeScreenshot = async () => {
         // Convert data URL to Blob (without fetch to avoid CSP issues)
         const blob = dataUrlToBlob(dataUrl);
         
-        // Extract HTML from the page via content script (only for http/https URLs)
-        let htmlSnapshot = null;
         let consoleLogs = null;
         let networkLogs = null;
         let deviceMeta = null;
         
-        // Check if captures are enabled
-        const { htmlCaptureEnabled = false, networkCaptureEnabled = true } = await chrome.storage.local.get(['htmlCaptureEnabled', 'networkCaptureEnabled']);
+        // Check if network capture is enabled
+        const { networkCaptureEnabled = true } = await chrome.storage.local.get(['networkCaptureEnabled']);
 
         const isValidUrl = activeTab.url && 
             (activeTab.url.startsWith('http://') || activeTab.url.startsWith('https://')) &&
@@ -233,16 +231,6 @@ const takeScreenshot = async () => {
                     files: ['content.js']
                 }).catch(() => {}); // Ignore if already injected
                 
-                // Request HTML extraction if enabled
-                if (htmlCaptureEnabled) {
-                    try {
-                        const response = await chrome.tabs.sendMessage(activeTab.id, { type: 'extract-page-html' });
-                        htmlSnapshot = response?.html || null;
-                    } catch (htmlError) {
-                        console.error('Error extracting page HTML:', htmlError);
-                    }
-                }
-
                 // Always collect device metadata; also grab console/network logs if enabled
                 try {
                     const logsResponse = await chrome.tabs.sendMessage(activeTab.id, { type: 'extract-console-network' });
@@ -263,13 +251,13 @@ const takeScreenshot = async () => {
         
         // Save to IndexedDB with unique ID
         const captureId = crypto.randomUUID();
-        await saveCapture(captureId, blob, filename, 'image/png', htmlSnapshot, consoleLogs, networkLogs, activeTab.url || null, deviceMeta);
+        await saveCapture(captureId, blob, filename, 'image/png', consoleLogs, networkLogs, activeTab.url || null, deviceMeta);
         
         // Open editor tab instead of preview
         const editorUrl = chrome.runtime.getURL(`editor.html?id=${captureId}`);
         await chrome.tabs.create({ url: editorUrl });
         
-        console.log(`Screenshot saved to preview: ${filename}${htmlSnapshot ? ' (with HTML)' : ''}${consoleLogs ? ` (${consoleLogs.length} console logs)` : ''}${networkLogs ? ` (${networkLogs.length} network entries)` : ''}`);
+        console.log(`Screenshot saved to preview: ${filename}${consoleLogs ? ` (${consoleLogs.length} console logs)` : ''}${networkLogs ? ` (${networkLogs.length} network entries)` : ''}`);
     } catch (error) {
         console.error("Error taking screenshot:", error);
     }

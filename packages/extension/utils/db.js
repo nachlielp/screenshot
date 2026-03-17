@@ -28,7 +28,7 @@ function openDB() {
   return dbPromise;
 }
 
-export async function saveCapture(id, blob, filename, mimeType, htmlSnapshot = null, consoleLogs = null, networkLogs = null, sourceUrl = null, deviceMeta = null) {
+export async function saveCapture(id, blob, filename, mimeType, consoleLogs = null, networkLogs = null, sourceUrl = null, deviceMeta = null) {
   const db = await openDB();
   const transaction = db.transaction([STORE_NAME], 'readwrite');
   const store = transaction.objectStore(STORE_NAME);
@@ -39,7 +39,6 @@ export async function saveCapture(id, blob, filename, mimeType, htmlSnapshot = n
     filename,
     mimeType,
     timestamp: Date.now(),
-    htmlSnapshot,   // Store the HTML string if provided
     consoleLogs,    // Array of console log entries
     networkLogs,    // Array of network request entries
     sourceUrl,      // Original page URL

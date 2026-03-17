@@ -18,7 +18,11 @@ export function migrateLegacyPathToHashRoute() {
     return;
   }
 
-  if (relativePath === "/library" || relativePath.startsWith("/snapshot/")) {
+  if (
+    relativePath === "/library" ||
+    relativePath === "/privacy" ||
+    relativePath.startsWith("/snapshot/")
+  ) {
     const nextUrl = `${basePath || ""}/#${relativePath}${window.location.search}`;
     window.history.replaceState(null, "", nextUrl);
   }

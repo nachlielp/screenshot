@@ -4,6 +4,7 @@ import { ConvexReactClient } from "convex/react";
 import { useAuth } from "@clerk/clerk-react";
 import SnapshotViewer from "./pages/SnapshotViewer";
 import Library from "./pages/Library";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
 
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL);
 
@@ -13,6 +14,7 @@ export default function App() {
       <Routes>
         <Route path="/snapshot/:shareToken" element={<SnapshotViewer />} />
         <Route path="/library" element={<Library />} />
+        <Route path="/privacy" element={<PrivacyPolicy />} />
         <Route path="/" element={<Navigate to="/library" replace />} />
         <Route path="*" element={<Navigate to="/library" replace />} />
       </Routes>

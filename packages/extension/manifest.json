@@ -31,8 +31,6 @@
         "desktopCapture",
         "tabs",
         "activeTab",
-        "downloads",
-        "identity",
         "cookies"
     ],
     "content_scripts": [
@@ -68,6 +66,6 @@
         }
     ],
     "content_security_policy": {
-        "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://*.convex.cloud https://*.clerk.accounts.dev https://clerk.clerk.accounts.dev https://*.clerk.com https://*.accounts.dev https://clerk.snap.nachli.com wss://*.convex.cloud"
+        "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://*.convex.cloud https://*.clerk.accounts.dev https://clerk.clerk.accounts.dev https://*.clerk.com https://*.accounts.dev https://clerk.snap.nachli.com wss://*.convex.cloud"
     }
 }

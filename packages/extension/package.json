@@ -4,7 +4,8 @@
   "version": "1.0.0",
   "description": "Screenshot Chrome Extension - Capture your screen and share your ideas",
   "scripts": {
-    "test": "jest"
+    "test": "jest",
+    "zip": "rm -f ../../extension-upload.zip && zip -r ../../extension-upload.zip . -x \"node_modules/*\" \"*.md\" \"*.test.js\" \"*.swp\" \"docs/*\""
   },
   "devDependencies": {
     "jest": "^29.7.0"

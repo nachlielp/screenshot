@@ -1,5 +1,5 @@
-// Clerk Authentication for Chrome Extension
-// Using Clerk hosted authentication with chrome.identity
+// Clerk authentication for the Chrome extension
+// Uses a hosted Clerk sign-in page plus cookie-based session sync
 import { getRuntimeConfig } from "./runtime-config.js";
 
 // Storage key for user data
