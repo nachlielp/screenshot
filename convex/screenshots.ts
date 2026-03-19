@@ -54,6 +54,9 @@ export const getOrCreateUser = mutation({
     name: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const normalizedEmail = args.email.trim();
+    const normalizedName = args.name?.trim() || undefined;
+
     // Check if user exists
     const existingUser = await ctx.db
       .query("users")
@@ -61,14 +64,24 @@ export const getOrCreateUser = mutation({
       .first();
 
     if (existingUser) {
+      if (
+        existingUser.email !== normalizedEmail ||
+        existingUser.name !== normalizedName
+      ) {
+        await ctx.db.patch(existingUser._id, {
+          email: normalizedEmail,
+          name: normalizedName,
+        });
+      }
+
       return existingUser._id;
     }
 
     // Create new user
     const userId = await ctx.db.insert("users", {
       clerkId: args.clerkId,
-      email: args.email,
-      name: args.name,
+      email: normalizedEmail,
+      name: normalizedName,
       createdAt: Date.now(),
     });
 
