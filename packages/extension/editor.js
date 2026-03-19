@@ -8,7 +8,7 @@ let canvas, ctx;
 let originalImage = null;
 let currentTool = null;
 let currentColor = '#ef4444';
-let currentThickness = 3;
+let currentThickness = 7;
 let currentFontSize = 20;
 let isDrawing = false;
 let startX, startY;

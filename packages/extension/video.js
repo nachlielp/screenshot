@@ -1,6 +1,7 @@
 import { getCapture, deleteCapture } from './utils/db.js';
 import { uploadToConvex } from './utils/convex-client.js';
 import { isAuthenticated } from './utils/auth.js';
+import { getRuntimeConfig } from './utils/runtime-config.js';
 
 const VERSION = 'v1.3.0';
 console.log(`[Video] Module loaded - ${VERSION}`);
@@ -154,15 +155,15 @@ async function handleShare() {
       currentCapture.deviceMeta || null
     );
     
-    // Build preview link using snapshot-inspector
-    const previewUrl = new URL(chrome.runtime.getURL('snapshot-inspector.html'));
-    const params = new URLSearchParams();
-    if (result.publicUrl) params.append('imageUrl', result.publicUrl);
-    if (result.consoleLogsUrl) params.append('consoleUrl', result.consoleLogsUrl);
-    if (result.networkLogsUrl) params.append('networkUrl', result.networkLogsUrl);
-    if (currentCapture.sourceUrl) params.append('sourceUrl', currentCapture.sourceUrl);
-    previewUrl.search = params.toString();
-    const previewLink = previewUrl.toString();
+    // Build the hosted snapshot URL so the preview opens in the web app.
+    const config = await getRuntimeConfig();
+    const previewLink = result.shareToken
+      ? `${config.siteUrl}/#/snapshot/${result.shareToken}`
+      : result.publicUrl;
+
+    if (!previewLink) {
+      throw new Error('Upload succeeded, but no preview URL was returned');
+    }
     
     // Store the preview link
     shareBtn.dataset.previewLink = previewLink;
