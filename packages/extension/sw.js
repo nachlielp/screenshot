@@ -54,6 +54,78 @@ const executeScript = async (scriptOptions) => {
 };
 
 /**
+ * Ensures the offscreen document exists for media-based capture tasks.
+ */
+const ensureOffscreenDocument = async () => {
+    const contexts = await chrome.runtime.getContexts({});
+    const offscreenDocument = contexts.find((ctx) => ctx.contextType === "OFFSCREEN_DOCUMENT");
+
+    if (!offscreenDocument) {
+        await chrome.offscreen.createDocument({
+            url: "offscreen.html",
+            reasons: ["USER_MEDIA", "DISPLAY_MEDIA"],
+            justification: "Required for desktop screenshot and recording capture",
+        });
+    }
+};
+
+/**
+ * Requests the offscreen document to convert a desktop stream into a PNG blob.
+ * @param {string} streamId
+ * @param {"screen"|"window"} captureTarget
+ * @returns {Promise<{ dataUrl: string, deviceMeta: object | null }>}
+ */
+const captureDesktopSurface = (streamId, captureTarget) => (
+    new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage(
+            {
+                type: "capture-desktop-screenshot",
+                target: "offscreen",
+                streamId,
+                captureTarget,
+            },
+            (response) => {
+                if (chrome.runtime.lastError) {
+                    reject(new Error(chrome.runtime.lastError.message));
+                    return;
+                }
+
+                if (!response?.success || !response.dataUrl) {
+                    reject(new Error(response?.error || "Failed to capture desktop screenshot"));
+                    return;
+                }
+
+                resolve({
+                    dataUrl: response.dataUrl,
+                    deviceMeta: response.deviceMeta || null,
+                });
+            }
+        );
+    })
+);
+
+/**
+ * Captures a screenshot from a chosen window or screen and opens it in the editor.
+ * @param {"screen"|"window"} captureTarget
+ * @param {string} streamId
+ */
+const takeDesktopScreenshot = async (captureTarget, streamId) => {
+    await ensureOffscreenDocument();
+
+    const { dataUrl, deviceMeta } = await captureDesktopSurface(streamId, captureTarget);
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const filename = `${captureTarget}-screenshot-${timestamp}.png`;
+    const blob = dataUrlToBlob(dataUrl);
+    const captureId = crypto.randomUUID();
+
+    await saveCapture(captureId, blob, filename, 'image/png', null, null, null, deviceMeta);
+
+    const editorUrl = chrome.runtime.getURL(`editor.html?id=${captureId}`);
+    await chrome.tabs.create({ url: editorUrl });
+};
+
+/**
  * Listener for tab activation events
  * @param {chrome.tabs.TabActiveInfo} activeInfo - Details of the activated tab
  */
@@ -117,15 +189,8 @@ const endTabCapture = async () => {
  * @param {boolean} start - Whether to start or stop the recording
  */
 const handleTabRecording = async (start) => {
-    const contexts = await chrome.runtime.getContexts({});
-    const offscreenDocument = contexts.find((ctx) => ctx.contextType === "OFFSCREEN_DOCUMENT");
-
-    if (!offscreenDocument && start) {
-        await chrome.offscreen.createDocument({
-            url: "offscreen.html",
-            reasons: ["USER_MEDIA", "DISPLAY_MEDIA"],
-            justification: "Required for tab recording",
-        });
+    if (start) {
+        await ensureOffscreenDocument();
     }
 
     if (start) {
@@ -157,7 +222,7 @@ const dataUrlToBlob = (dataUrl) => {
 /**
  * Takes a screenshot of the active tab and opens it in preview tab
  */
-const takeScreenshot = async () => {
+const takeScreenshot = async (captureTarget = "tab") => {
     const activeTab = await getActiveTab();
     if (!activeTab) {
         console.error("No active tab found for screenshot");
@@ -305,6 +370,10 @@ const openVideoPlaybackTab = async ({ url, base64 }) => {
  * Listener for runtime messages
  */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.target === "offscreen") {
+        return false;
+    }
+
     (async () => {
         try {
             console.log("Message received in service worker:", request.type);
@@ -319,7 +388,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     break;
                 case "take-screenshot":
                     console.log("Taking screenshot...");
-                    await takeScreenshot();
+                    await takeScreenshot(request.captureTarget);
+                    sendResponse({ success: true });
+                    break;
+                case "take-desktop-screenshot":
+                    console.log("Taking desktop screenshot...", request.captureTarget);
+                    await takeDesktopScreenshot(request.captureTarget, request.streamId);
                     sendResponse({ success: true });
                     break;
                 case "capture-viewport-part":

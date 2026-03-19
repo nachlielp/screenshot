@@ -1,5 +1,6 @@
 import { isAuthenticated, getCurrentUser, signIn, signInWithGoogle, signOut, onAuthChange, syncClerkSession } from './utils/auth.js';
 import { getRuntimeConfig } from './utils/runtime-config.js';
+import { saveCapture } from './utils/db.js';
 
 /**
  * Cache DOM elements for easy access.
@@ -7,6 +8,8 @@ import { getRuntimeConfig } from './utils/runtime-config.js';
 const recordTabButton = document.getElementById("tab");
 const recordScreenButton = document.getElementById("screen");
 const screenshotButton = document.getElementById("screenshot");
+const screenshotTargetSelect = document.getElementById("screenshotTarget");
+const captureHint = document.getElementById("captureHint");
 const bodyElement = document.body;
 const modeToggleSwitch = document.getElementById("modeToggle");
 const modeLabelElement = document.getElementById("modeLabel");
@@ -78,6 +81,145 @@ const loadFullPagePreference = async () => {
 const saveFullPagePreference = async () => {
     const isEnabled = fullPageToggle.checked;
     await chrome.storage.local.set({ fullPageScreenshot: isEnabled });
+};
+
+/**
+ * Builds display-media options that bias the picker toward a screen or window.
+ * @param {"screen"|"window"} captureTarget
+ * @returns {DisplayMediaStreamOptions}
+ */
+const getDisplayMediaOptions = (captureTarget) => ({
+    video: {
+        width: { ideal: 3840 },
+        height: { ideal: 2160 },
+        frameRate: { ideal: 30, max: 30 },
+    },
+    audio: false,
+    preferCurrentTab: false,
+    selfBrowserSurface: "exclude",
+    surfaceSwitching: "exclude",
+    systemAudio: "exclude",
+    monitorTypeSurfaces: captureTarget === "screen" ? "include" : "exclude",
+});
+
+/**
+ * Converts a canvas into a PNG blob.
+ * @param {HTMLCanvasElement} canvas
+ * @returns {Promise<Blob>}
+ */
+const canvasToBlob = (canvas) => (
+    new Promise((resolve, reject) => {
+        canvas.toBlob((blob) => {
+            if (!blob) {
+                reject(new Error("Failed to create screenshot blob"));
+                return;
+            }
+
+            resolve(blob);
+        }, "image/png");
+    })
+);
+
+/**
+ * Captures a still image from getDisplayMedia and opens it in the editor.
+ * @param {"screen"|"window"} captureTarget
+ * @returns {Promise<void>}
+ */
+const captureDesktopScreenshot = async (captureTarget) => {
+    const stream = await navigator.mediaDevices.getDisplayMedia(getDisplayMediaOptions(captureTarget));
+
+    try {
+        const [videoTrack] = stream.getVideoTracks();
+        if (!videoTrack) {
+            throw new Error("No video track found for desktop capture");
+        }
+
+        const settings = videoTrack.getSettings ? videoTrack.getSettings() : {};
+        const video = document.createElement("video");
+        video.muted = true;
+        video.playsInline = true;
+        video.srcObject = stream;
+
+        await new Promise((resolve) => {
+            video.onloadedmetadata = () => resolve();
+        });
+        await video.play();
+
+        if (typeof video.requestVideoFrameCallback === "function") {
+            await new Promise((resolve) => video.requestVideoFrameCallback(() => resolve()));
+        } else {
+            await new Promise((resolve) => setTimeout(resolve, 150));
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        const context = canvas.getContext("2d");
+        if (!context) {
+            throw new Error("Could not create canvas context");
+        }
+
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        const blob = await canvasToBlob(canvas);
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+        const filename = `${captureTarget}-screenshot-${timestamp}.png`;
+        const captureId = crypto.randomUUID();
+
+        await saveCapture(captureId, blob, filename, 'image/png', null, null, null, {
+            captureSurface: captureTarget,
+            displaySurface: settings.displaySurface || null,
+            screenWidth: canvas.width,
+            screenHeight: canvas.height,
+            timestamp: new Date().toISOString(),
+        });
+
+        const editorUrl = chrome.runtime.getURL(`editor.html?id=${captureId}`);
+        await chrome.tabs.create({ url: editorUrl });
+    } finally {
+        stream.getTracks().forEach((track) => track.stop());
+    }
+};
+
+/**
+ * Loads the screenshot target preference from storage.
+ */
+const loadScreenshotTargetPreference = async () => {
+    if (!screenshotTargetSelect) return;
+
+    const result = await chrome.storage.local.get(["screenshotTarget"]);
+    screenshotTargetSelect.value = result.screenshotTarget || "tab";
+    updateCaptureOptionUI();
+};
+
+/**
+ * Saves the screenshot target preference to storage.
+ */
+const saveScreenshotTargetPreference = async () => {
+    if (!screenshotTargetSelect) return;
+
+    const target = screenshotTargetSelect.value || "tab";
+    await chrome.storage.local.set({ screenshotTarget: target });
+    updateCaptureOptionUI();
+};
+
+/**
+ * Updates copy and toggle availability based on the selected screenshot target.
+ */
+const updateCaptureOptionUI = () => {
+    const target = screenshotTargetSelect?.value || "tab";
+    const isTabCapture = target === "tab";
+
+    if (captureHint) {
+        captureHint.textContent = isTabCapture
+            ? "Tab capture includes page context when available."
+            : "Window and screen capture use the system share picker and save only the captured image.";
+    }
+
+    if (networkCaptureToggle) {
+        networkCaptureToggle.disabled = !isTabCapture;
+    }
 };
 
 
@@ -264,11 +406,32 @@ const initializePopup = async () => {
         }
         if (screenshotButton) {
             screenshotButton.addEventListener("click", async () => {
-                console.log("Screenshot button clicked");
-                chrome.runtime.sendMessage({ type: "take-screenshot" });
-                console.log("Message sent to service worker");
-                window.close();
+                const captureTarget = screenshotTargetSelect?.value || "tab";
+
+                console.log("Screenshot button clicked", { captureTarget });
+
+                try {
+                    if (captureTarget === "window" || captureTarget === "screen") {
+                        await captureDesktopScreenshot(captureTarget);
+                    } else {
+                        await chrome.runtime.sendMessage({
+                            type: "take-screenshot",
+                            target: "service-worker",
+                            captureTarget,
+                        });
+                    }
+
+                    console.log("Message sent to service worker");
+                    window.close();
+                } catch (error) {
+                    console.error("Failed to start screenshot capture:", error);
+                }
             });
+        }
+
+        if (screenshotTargetSelect) {
+            await loadScreenshotTargetPreference();
+            screenshotTargetSelect.addEventListener("change", saveScreenshotTargetPreference);
         }
 
         // Mode toggle (if exists)

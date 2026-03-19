@@ -77,6 +77,37 @@
             padding: 10px 0;
         }
 
+        .field-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .field-label {
+            font-size: 16px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        select {
+            width: 100%;
+            padding: 12px;
+            font-size: 15px;
+            font-family: inherit;
+            color: #1a1a1a;
+            background: #fff;
+            border: 1px solid #d7d7d7;
+            border-radius: 8px;
+            outline: none;
+        }
+
+        .field-hint {
+            margin: 0;
+            font-size: 12px;
+            line-height: 1.4;
+            color: #666;
+        }
+
         .toggle-label {
             font-size: 16px;
             font-weight: 500;
@@ -176,6 +207,16 @@
     <div class="card">
         <!-- <button id="tab">Record Tab</button>
         <button id="screen">Record Screen</button> -->
+        <div class="field-stack">
+            <label class="field-label" for="screenshotTarget">Capture</label>
+            <select id="screenshotTarget">
+                <option value="tab">Current Tab</option>
+                <option value="window">Window</option>
+                <option value="screen">Screen</option>
+            </select>
+            <p class="field-hint" id="captureHint">Tab capture includes page context when available. Window and screen capture open the system picker.</p>
+        </div>
+
         <button id="screenshot">Take Screenshot</button>
 
         <!-- <div class="toggle-container">

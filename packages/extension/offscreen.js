@@ -1,7 +1,15 @@
 import { saveCapture } from './utils/db.js';
 
 // Listen for messages from the service worker
-chrome.runtime.onMessage.addListener((message, sender) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.target && message.target !== "offscreen") {
+        return false;
+    }
+
+    if (!message.target && !["start-recording", "stop-recording", "capture-desktop-screenshot"].includes(message.type)) {
+        return false;
+    }
+
     switch (message.type) {
         case "start-recording":
             startRecording(message.data);
@@ -9,10 +17,20 @@ chrome.runtime.onMessage.addListener((message, sender) => {
         case "stop-recording":
             stopRecording();
             break;
+        case "capture-desktop-screenshot":
+            captureDesktopScreenshot(message.streamId, message.captureTarget)
+                .then((result) => sendResponse(result))
+                .catch((error) => {
+                    sendResponse({
+                        success: false,
+                        error: error.message,
+                    });
+                });
+            return true;
         default:
-            console.warn("Unknown request type:");
+            console.warn("Unknown request type:", message.type);
     }
-    return true;
+    return false;
 });
 
 let mediaRecorder = null;
@@ -164,4 +182,80 @@ async function handleRecordingStop () {
     });
     
     recordedChunks = [];
+}
+
+/**
+ * Captures a still image from a desktop or window stream.
+ * @param {string} streamId
+ * @param {"screen"|"window"} captureTarget
+ * @returns {Promise<{ success: boolean, dataUrl: string, deviceMeta: object }>}
+ */
+async function captureDesktopScreenshot (streamId, captureTarget) {
+    const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+            mandatory: {
+                chromeMediaSource: "desktop",
+                chromeMediaSourceId: streamId,
+                maxWidth: 7680,
+                maxHeight: 4320,
+            },
+        },
+    });
+
+    try {
+        const video = document.createElement("video");
+        video.muted = true;
+        video.playsInline = true;
+        video.srcObject = stream;
+        await new Promise((resolve) => {
+            video.onloadedmetadata = () => resolve();
+        });
+        await video.play();
+
+        if (typeof video.requestVideoFrameCallback === "function") {
+            await new Promise((resolve) => video.requestVideoFrameCallback(() => resolve()));
+        } else {
+            await new Promise((resolve) => setTimeout(resolve, 150));
+        }
+
+        const canvas = new OffscreenCanvas(video.videoWidth, video.videoHeight);
+        const context = canvas.getContext("2d");
+
+        if (!context) {
+            throw new Error("Could not create canvas context");
+        }
+
+        context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+
+        const blob = await canvas.convertToBlob({ type: "image/png" });
+        const dataUrl = await blobToDataUrl(blob);
+
+        return {
+            success: true,
+            dataUrl,
+            deviceMeta: {
+                captureSurface: captureTarget,
+                screenWidth: video.videoWidth,
+                screenHeight: video.videoHeight,
+                timestamp: new Date().toISOString(),
+            },
+        };
+    } finally {
+        stream.getTracks().forEach((track) => track.stop());
+    }
+}
+
+/**
+ * Converts a blob into a data URL.
+ * @param {Blob} blob
+ * @returns {Promise<string>}
+ */
+function blobToDataUrl (blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(reader.error);
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(blob);
+    });
 }
