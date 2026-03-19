@@ -103,6 +103,9 @@ export default function SnapshotViewer() {
   const [shareCopyState, setShareCopyState] = useState<"idle" | "copied" | "error">(
     "idle"
   );
+  const [imageCopyState, setImageCopyState] = useState<"idle" | "copied" | "error">(
+    "idle"
+  );
   const [imagePaneRatio, setImagePaneRatio] = useState(() => {
     if (typeof window === "undefined") return 0.66;
     const stored = window.localStorage.getItem("snapshot-horizontal-split-ratio");
@@ -364,6 +367,11 @@ export default function SnapshotViewer() {
     Boolean(screenshot.deviceScreenWidth) ||
     Boolean(screenshot.deviceScreenHeight) ||
     Boolean(screenshot.captureTimestamp);
+  const hasDiagnosticsPanel =
+    Boolean(screenshot.consoleLogsUrl) ||
+    Boolean(screenshot.networkLogsUrl) ||
+    consoleLogs.length > 0 ||
+    networkLogs.length > 0;
 
   const views: { key: ViewMode; label: string; disabled: boolean; badge?: number }[] =
     [
@@ -400,6 +408,27 @@ export default function SnapshotViewer() {
     localImageUrlRef.current = nextUrl;
     setDisplayImageUrl(nextUrl);
     setEditMode(false);
+  };
+
+  const handleCopyImage = async () => {
+    try {
+      const imageUrl = displayImageUrl ?? screenshot?.publicUrl;
+      if (!imageUrl) return;
+
+      const response = await fetch(imageUrl);
+      if (!response.ok) {
+        throw new Error("Failed to fetch image");
+      }
+
+      const blob = await response.blob();
+      await navigator.clipboard.write([
+        new ClipboardItem({ [blob.type || "image/png"]: blob }),
+      ]);
+      setImageCopyState("copied");
+    } catch (error) {
+      console.error("Failed to copy image:", error);
+      setImageCopyState("error");
+    }
   };
 
   const handleActivateHighlight = (item: HighlightItem) => {
@@ -640,7 +669,7 @@ export default function SnapshotViewer() {
       <div
         className={`sv-content${isResizing ? " is-resizing" : ""}${
           hasHighlights ? " has-highlights" : ""
-        }`}
+        }${hasDiagnosticsPanel ? "" : " no-data-pane"}`}
         ref={contentRef}
         style={contentStyle}
       >
@@ -694,6 +723,18 @@ export default function SnapshotViewer() {
                   {editMode ? "✓ Done Editing" : "✏️ Edit"}
                 </button>
               )}
+              <button
+                className={`sv-control-btn${imageCopyState === "copied" ? " copied" : ""}${
+                  imageCopyState === "error" ? " error" : ""
+                }`}
+                onClick={handleCopyImage}
+              >
+                {imageCopyState === "copied"
+                  ? "📋 Copied"
+                  : imageCopyState === "error"
+                    ? "⚠️ Copy Failed"
+                    : "📋 Copy Image"}
+              </button>
               <a
                 href={displayImageUrl ?? screenshot.publicUrl}
                 download={screenshot.filename}
@@ -724,113 +765,117 @@ export default function SnapshotViewer() {
           </div>
         </section>
 
-        <div
-          className="sv-splitter"
-          onMouseDown={() => setIsResizing(true)}
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize snapshot layout"
-        >
-          <div className="sv-splitter-handle" />
-        </div>
-
-        <section className="sv-data-card">
-          {(hasHighlights || markMode) && (
-            <HighlightsPanel
-              items={highlightItems}
-              activeMarkedId={activeMarkedId}
-              onActivate={handleActivateHighlight}
-            />
-          )}
-
-          <div className="sv-view-controls">
-            <div className="sv-view-toggle">
-              {views.map((view) => (
-                <button
-                  key={view.key}
-                  className={`sv-view-btn${currentView === view.key ? " active" : ""}`}
-                  disabled={view.disabled}
-                  onClick={() => setCurrentView(view.key)}
-                >
-                  {view.label}
-                  {view.badge && view.key === "console" && (
-                    <span className="sv-tab-badge sv-tab-badge-error">
-                      {view.badge}
-                    </span>
-                  )}
-                  {view.badge && view.key === "network" && (
-                    <span className="sv-tab-badge">{view.badge}</span>
-                  )}
-                </button>
-              ))}
+        {hasDiagnosticsPanel && (
+          <>
+            <div
+              className="sv-splitter"
+              onMouseDown={() => setIsResizing(true)}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize snapshot layout"
+            >
+              <div className="sv-splitter-handle" />
             </div>
-          </div>
 
-          <div className="sv-tab-content">
-            {currentView === "info" && (
-              <InfoPanel
-                htmlContent={htmlContent}
-                sourceUrl={screenshot.sourceUrl}
-                deviceMeta={{
-                  browser: screenshot.deviceBrowser,
-                  browserVersion: screenshot.deviceBrowserVersion,
-                  os: screenshot.deviceOs,
-                  networkSpeed: screenshot.deviceNetworkSpeed,
-                  charging: screenshot.deviceCharging,
-                  browserMode: screenshot.deviceBrowserMode,
-                  screenWidth: screenshot.deviceScreenWidth,
-                  screenHeight: screenshot.deviceScreenHeight,
-                  timestamp: screenshot.captureTimestamp,
-                }}
-                createdAt={screenshot._creationTime}
-              />
-            )}
-            {currentView === "console" && (
-              <ConsolePanel
-                logs={consoleLogs}
-                filter={consoleFilter}
-                onFilterChange={setConsoleFilter}
-                markedEntries={consoleMarks}
-                activeMarkedId={activeMarkedId}
-                activeEntryIndex={
-                  activeHighlight?.source === "console"
-                    ? activeHighlight.entryIndex
-                    : null
-                }
-                showAllEntries={showAllConsoleEntries}
-                onToggleShowAll={() =>
-                  setShowAllConsoleEntries((current) => !current)
-                }
-                markMode={markMode}
-                canEdit={canEdit}
-                onMark={handleMarkItem}
-                onUnmark={handleRemoveMarkedItem}
-                onActivateMarkedId={setActiveMarkedId}
-              />
-            )}
-            {currentView === "network" && (
-              <NetworkPanel
-                logs={networkLogs}
-                markedEntries={networkMarks}
-                activeMarkedId={activeMarkedId}
-                activeEntryIndex={
-                  activeHighlight?.source === "network"
-                    ? activeHighlight.entryIndex
-                    : null
-                }
-                showAllEntries={showAllNetworkEntries}
-                onToggleShowAll={() =>
-                  setShowAllNetworkEntries((current) => !current)
-                }
-                markMode={markMode}
-                canEdit={canEdit}
-                onMark={handleMarkItem}
-                onUnmark={handleRemoveMarkedItem}
-                onActivateMarkedId={setActiveMarkedId}
-              />
-            )}
-          </div>
-        </section>
+            <section className="sv-data-card">
+              {(hasHighlights || markMode) && (
+                <HighlightsPanel
+                  items={highlightItems}
+                  activeMarkedId={activeMarkedId}
+                  onActivate={handleActivateHighlight}
+                />
+              )}
+
+              <div className="sv-view-controls">
+                <div className="sv-view-toggle">
+                  {views.map((view) => (
+                    <button
+                      key={view.key}
+                      className={`sv-view-btn${currentView === view.key ? " active" : ""}`}
+                      disabled={view.disabled}
+                      onClick={() => setCurrentView(view.key)}
+                    >
+                      {view.label}
+                      {view.badge && view.key === "console" && (
+                        <span className="sv-tab-badge sv-tab-badge-error">
+                          {view.badge}
+                        </span>
+                      )}
+                      {view.badge && view.key === "network" && (
+                        <span className="sv-tab-badge">{view.badge}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="sv-tab-content">
+                {currentView === "info" && (
+                  <InfoPanel
+                    htmlContent={htmlContent}
+                    sourceUrl={screenshot.sourceUrl}
+                    deviceMeta={{
+                      browser: screenshot.deviceBrowser,
+                      browserVersion: screenshot.deviceBrowserVersion,
+                      os: screenshot.deviceOs,
+                      networkSpeed: screenshot.deviceNetworkSpeed,
+                      charging: screenshot.deviceCharging,
+                      browserMode: screenshot.deviceBrowserMode,
+                      screenWidth: screenshot.deviceScreenWidth,
+                      screenHeight: screenshot.deviceScreenHeight,
+                      timestamp: screenshot.captureTimestamp,
+                    }}
+                    createdAt={screenshot._creationTime}
+                  />
+                )}
+                {currentView === "console" && (
+                  <ConsolePanel
+                    logs={consoleLogs}
+                    filter={consoleFilter}
+                    onFilterChange={setConsoleFilter}
+                    markedEntries={consoleMarks}
+                    activeMarkedId={activeMarkedId}
+                    activeEntryIndex={
+                      activeHighlight?.source === "console"
+                        ? activeHighlight.entryIndex
+                        : null
+                    }
+                    showAllEntries={showAllConsoleEntries}
+                    onToggleShowAll={() =>
+                      setShowAllConsoleEntries((current) => !current)
+                    }
+                    markMode={markMode}
+                    canEdit={canEdit}
+                    onMark={handleMarkItem}
+                    onUnmark={handleRemoveMarkedItem}
+                    onActivateMarkedId={setActiveMarkedId}
+                  />
+                )}
+                {currentView === "network" && (
+                  <NetworkPanel
+                    logs={networkLogs}
+                    markedEntries={networkMarks}
+                    activeMarkedId={activeMarkedId}
+                    activeEntryIndex={
+                      activeHighlight?.source === "network"
+                        ? activeHighlight.entryIndex
+                        : null
+                    }
+                    showAllEntries={showAllNetworkEntries}
+                    onToggleShowAll={() =>
+                      setShowAllNetworkEntries((current) => !current)
+                    }
+                    markMode={markMode}
+                    canEdit={canEdit}
+                    onMark={handleMarkItem}
+                    onUnmark={handleRemoveMarkedItem}
+                    onActivateMarkedId={setActiveMarkedId}
+                  />
+                )}
+              </div>
+            </section>
+          </>
+        )}
       </div>
     </div>
   );

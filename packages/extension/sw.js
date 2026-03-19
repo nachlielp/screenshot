@@ -222,7 +222,7 @@ const dataUrlToBlob = (dataUrl) => {
 /**
  * Takes a screenshot of the active tab and opens it in preview tab
  */
-const takeScreenshot = async (captureTarget = "tab") => {
+const takeScreenshot = async (captureTarget = "tab", options = {}) => {
     const activeTab = await getActiveTab();
     if (!activeTab) {
         console.error("No active tab found for screenshot");
@@ -230,8 +230,12 @@ const takeScreenshot = async (captureTarget = "tab") => {
     }
 
     try {
-        // Check if full page screenshot is enabled
-        const { fullPageScreenshot = false } = await chrome.storage.local.get('fullPageScreenshot');
+        const { fullPage = null, includeLogs = null } = options;
+        const storedPrefs = await chrome.storage.local.get(['fullPageScreenshot', 'networkCaptureEnabled']);
+        const fullPageScreenshot = typeof fullPage === 'boolean' ? fullPage : (storedPrefs.fullPageScreenshot || false);
+        const networkCaptureEnabled = typeof includeLogs === 'boolean'
+            ? includeLogs
+            : (storedPrefs.networkCaptureEnabled !== false);
         
         let dataUrl;
         
@@ -280,9 +284,6 @@ const takeScreenshot = async (captureTarget = "tab") => {
         let networkLogs = null;
         let deviceMeta = null;
         
-        // Check if network capture is enabled
-        const { networkCaptureEnabled = true } = await chrome.storage.local.get(['networkCaptureEnabled']);
-
         const isValidUrl = activeTab.url && 
             (activeTab.url.startsWith('http://') || activeTab.url.startsWith('https://')) &&
             !activeTab.url.startsWith('chrome://') &&
@@ -388,7 +389,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     break;
                 case "take-screenshot":
                     console.log("Taking screenshot...");
-                    await takeScreenshot(request.captureTarget);
+                    await takeScreenshot(request.captureTarget, {
+                        includeLogs: request.includeLogs,
+                        fullPage: request.fullPage,
+                    });
                     sendResponse({ success: true });
                     break;
                 case "take-desktop-screenshot":

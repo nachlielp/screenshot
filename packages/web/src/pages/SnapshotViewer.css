@@ -199,6 +199,10 @@
   cursor: col-resize;
 }
 
+.sv-content.no-data-pane {
+  display: block;
+}
+
 .sv-screenshot-card,
 .sv-data-card {
   background: #ffffff;
@@ -213,6 +217,11 @@
   min-width: 360px;
   display: flex;
   min-height: 0;
+}
+
+.sv-content.no-data-pane .sv-screenshot-card {
+  flex: 1 1 100%;
+  width: 100%;
 }
 
 .sv-data-card {
@@ -313,6 +322,18 @@
   background: #FFC107;
   border-color: #FFC107;
   color: #1a1a1a;
+}
+
+.sv-control-btn.copied {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: rgba(250, 204, 21, 0.18);
+  color: #8a5b00;
+}
+
+.sv-control-btn.error {
+  border-color: rgba(220, 38, 38, 0.24);
+  background: rgba(254, 242, 242, 0.95);
+  color: #b91c1c;
 }
 
 .sv-control-btn:disabled {

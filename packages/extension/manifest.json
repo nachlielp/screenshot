@@ -49,6 +49,8 @@
                 "video.js",
                 "editor.html",
                 "editor.js",
+                "import-image.html",
+                "import-image.js",
                 "library.html",
                 "library.js",
                 "snapshot-inspector.html",

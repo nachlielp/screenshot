@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Import Image</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@400;500;600;700&display=swap');
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            padding: 40px 24px;
+            font-family: "Josefin Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #f7f8fa;
+            color: #1a1a1a;
+        }
+
+        .wrap {
+            max-width: 680px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .hero {
+            background: #ffffff;
+            border: 1px solid #e6e8ef;
+            border-radius: 24px;
+            box-shadow: 0 16px 40px rgba(26, 26, 26, 0.08);
+            padding: 28px;
+        }
+
+        h1 {
+            margin: 0 0 10px;
+            font-size: 34px;
+        }
+
+        p {
+            margin: 0;
+            color: #626b7c;
+            font-size: 18px;
+            line-height: 1.5;
+        }
+
+        .dropzone {
+            margin-top: 24px;
+            padding: 46px 24px;
+            border: 2px dashed #d4dae6;
+            border-radius: 22px;
+            background: #fbfcff;
+            text-align: center;
+            transition: border-color 0.18s ease, background 0.18s ease;
+        }
+
+        .dropzone.drag-over {
+            border-color: #5a8ef6;
+            background: #eef5ff;
+        }
+
+        .dropzone strong {
+            display: block;
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+
+        .dropzone span {
+            display: block;
+            color: #6d7585;
+            font-size: 16px;
+        }
+
+        .actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 22px;
+        }
+
+        button {
+            padding: 14px 18px;
+            border: none;
+            border-radius: 14px;
+            font: inherit;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .primary {
+            background: #ffc107;
+            color: #342400;
+        }
+
+        .secondary {
+            background: #f1f3f8;
+            color: #2d3340;
+        }
+
+        .hidden-input {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <div class="hero">
+            <h1>Annotate an Image</h1>
+            <p>Drop an image here, choose one from your computer, or paste from the clipboard. Nothing is uploaded yet. We only open it in the editor.</p>
+
+            <div class="dropzone" id="dropzone">
+                <strong>Drop image here</strong>
+                <span>PNG, JPG, WEBP, GIF, and other browser-supported image files</span>
+            </div>
+
+            <div class="actions">
+                <button class="primary" id="chooseFileBtn" type="button">Choose File</button>
+                <button class="secondary" id="pasteImageBtn" type="button">Paste Clipboard Image</button>
+            </div>
+        </div>
+    </div>
+
+    <input class="hidden-input" id="imageInput" type="file" accept="image/*">
+
+    <script type="module" src="import-image.js"></script>
+</body>
+</html>

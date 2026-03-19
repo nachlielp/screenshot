@@ -1,261 +1,319 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Screen Recorder</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Josefin+Sans:ital,wght@0,100..700;1,100..700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@400;500;600;700&display=swap');
 
-        html {
-            width: 100%;
+        * {
+            box-sizing: border-box;
         }
 
-        body {
-            width: 320px;
-            margin: 0 auto;
-            padding: 20px;
+        html, body {
+            margin: 0;
+            width: 360px;
+            min-height: 620px;
             font-family: "Josefin Sans", -apple-system, BlinkMacSystemFont, sans-serif;
             background: #f7f8fa;
             color: #1a1a1a;
+        }
+
+        body {
+            padding: 18px;
+        }
+
+        .shell {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .panel {
+            padding: 14px;
+            background: #ffffff;
+            border: 1px solid #e6e8ef;
+            border-radius: 22px;
+            box-shadow: 0 10px 24px rgba(26, 26, 26, 0.08);
+        }
+
+        .tile-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+        }
+
+        .tile,
+        .action-row,
+        .mini-btn {
+            font: inherit;
+            border: none;
+            cursor: pointer;
+        }
+
+        .tile {
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 25px;
-            border-radius: 12px;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-            transition: all 0.3s ease-in-out;
+            gap: 12px;
+            min-height: 126px;
+            padding: 16px 10px 14px;
+            background: #f8f8fb;
+            border: 1px solid #eceef4;
+            border-radius: 18px;
+            transition: background 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
         }
 
-        h1 {
-            font-size: 24px;
+        .tile:hover {
+            background: #fff6dd;
+            transform: translateY(-1px);
+            box-shadow: 0 8px 18px rgba(255, 193, 7, 0.18);
+        }
+
+        .tile-icon,
+        .row-icon {
+            color: #5a8ef6;
+        }
+
+        .tile-icon svg {
+            width: 54px;
+            height: 54px;
+        }
+
+        .tile-title {
+            text-align: center;
+            font-size: 15px;
             font-weight: 700;
-            margin: 0;
-            letter-spacing: 0.5px;
-            color: #1a1a1a;
+            line-height: 1.15;
         }
 
-        .card {
-            width: 100%;
-            max-width: 300px;
-            padding: 20px;
-            background-color: #ffffff;
-            border: 1px solid #e0e0e0;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        .action-list {
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 12px;
+            margin-top: 12px;
         }
 
-        button {
+        .action-row {
+            display: flex;
+            align-items: center;
+            gap: 14px;
             width: 100%;
-            padding: 12px;
+            padding: 18px;
+            text-align: left;
+            background: #f8f8fb;
+            border: 1px solid #eceef4;
+            border-radius: 18px;
+            transition: background 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+        }
+
+        .action-row:hover {
+            background: #eaf3ff;
+            transform: translateY(-1px);
+            box-shadow: 0 8px 18px rgba(90, 142, 246, 0.16);
+        }
+
+        .action-row.counting-down {
+            background: #fff6dd;
+            box-shadow: 0 8px 18px rgba(255, 193, 7, 0.18);
+        }
+
+        .action-row.counting-down .row-icon,
+        .action-row.counting-down .row-label,
+        .action-row.counting-down .delay-pill {
+            color: #8a5b00;
+        }
+
+        .action-row:hover .delay-pill {
+            opacity: 1;
+        }
+
+        .row-icon svg {
+            width: 28px;
+            height: 28px;
+        }
+
+        .row-label {
+            flex: 1;
+            font-size: 17px;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+
+        .delay-pill {
+            min-width: 2.4ch;
+            text-align: right;
+            color: #7d8597;
             font-size: 16px;
-            font-weight: 600;
-            color: #1a1a1a;
-            background: #FFC107;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            box-shadow: 0 2px 6px rgba(255, 193, 7, 0.3);
-            transition: transform 0.2s, box-shadow 0.2s, background 0.2s;
+            font-weight: 700;
+            opacity: 0;
+            transition: opacity 0.18s ease;
         }
 
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 10px rgba(255, 193, 7, 0.4);
-            background: #FFD54F;
+        .action-row.counting-down .delay-pill {
+            opacity: 1;
         }
 
-        .toggle-container {
-            width: 100%;
+        .footer {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 14px 16px;
+            background: #ffffff;
+            border: 1px solid #e6e8ef;
+            border-radius: 20px;
+            box-shadow: 0 10px 24px rgba(26, 26, 26, 0.06);
+        }
+
+        .footer-top {
             display: flex;
             justify-content: space-between;
+            gap: 12px;
             align-items: center;
-            padding: 10px 0;
         }
 
-        .field-stack {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
+        .account-copy {
+            min-width: 0;
         }
 
-        .field-label {
-            font-size: 16px;
-            font-weight: 500;
-            color: #333;
-        }
-
-        select {
-            width: 100%;
-            padding: 12px;
+        .account-copy strong {
+            display: block;
             font-size: 15px;
-            font-family: inherit;
-            color: #1a1a1a;
-            background: #fff;
-            border: 1px solid #d7d7d7;
-            border-radius: 8px;
-            outline: none;
         }
 
-        .field-hint {
-            margin: 0;
+        .account-copy span {
+            display: block;
+            margin-top: 2px;
+            color: #6f7787;
             font-size: 12px;
-            line-height: 1.4;
-            color: #666;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
-        .toggle-label {
-            font-size: 16px;
-            font-weight: 500;
+        .footer-actions {
             display: flex;
-            align-items: center;
             gap: 8px;
-            color: #333;
         }
 
-        .toggle-switch {
-            position: relative;
-            display: inline-block;
-            width: 48px;
-            height: 24px;
+        .mini-btn {
+            flex: 1;
+            padding: 11px 12px;
+            border-radius: 14px;
+            background: #fff6dd;
+            color: #664700;
+            font-size: 13px;
+            font-weight: 700;
         }
 
-        .toggle-switch input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-
-        .slider {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: #ccc;
-            border-radius: 24px;
-            cursor: pointer;
-            transition: background-color 0.3s, box-shadow 0.3s;
-        }
-
-        .slider:before {
-            position: absolute;
-            content: '';
-            height: 18px;
-            width: 18px;
-            left: 3px;
-            bottom: 3px;
-            background-color: white;
-            border-radius: 50%;
-            transition: transform 0.3s;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-        }
-
-        input:checked+.slider {
-            background-color: #FFC107;
-            box-shadow: 0 0 10px rgba(255, 193, 7, 0.3);
-        }
-
-        input:checked+.slider:before {
-            transform: translateX(24px);
-        }
-
-        footer {
-            font-size: 14px;
-            text-align: center;
-            color: #666;
+        .mini-btn.secondary {
+            background: #f5f6fa;
+            color: #414755;
         }
     </style>
 </head>
-
 <body>
-    <h1>Screen Recorder</h1>
+    <div class="shell">
+        <div class="panel">
+            <div class="tile-grid">
+                <button class="tile" id="visiblePartBtn" type="button">
+                    <span class="tile-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="3" y="5" width="18" height="14" rx="2"></rect>
+                            <path d="M3 9h18"></path>
+                            <path d="M8 7h.01"></path>
+                            <path d="M12 7h.01"></path>
+                        </svg>
+                    </span>
+                    <span class="tile-title">Tab</span>
+                </button>
 
-    <!-- Authentication Section -->
-    <div class="card" id="authCard">
-        <div id="signedOutView">
-            <p style="text-align: center; margin-bottom: 15px;">Sign in to share your captures</p>
-            <button id="signInGoogleBtn" style="background: #fff; color: #333; display: flex; align-items: center; justify-content: center; gap: 8px;">
-                <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4"/>
-                    <path d="M9.003 18c2.43 0 4.467-.806 5.956-2.18L12.05 13.56c-.806.54-1.837.86-3.047.86-2.344 0-4.328-1.584-5.036-3.711H.96v2.332C2.44 15.983 5.485 18 9.003 18z" fill="#34A853"/>
-                    <path d="M3.964 10.712c-.18-.54-.282-1.117-.282-1.71 0-.593.102-1.17.282-1.71V4.96H.957C.347 6.175 0 7.55 0 9.002c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
-                    <path d="M9.003 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.464.891 11.426 0 9.003 0 5.485 0 2.44 2.017.96 4.958L3.967 7.29c.708-2.127 2.692-3.71 5.036-3.71z" fill="#EA4335"/>
-                </svg>
-                Sign in with Google
-            </button>
-            <button id="syncAuthBtn" style="background: #f5f5f5; color: #333; border: 1px solid #ddd; margin-top: 10px; font-size: 13px;">
-                🔄 Sync Session (if already signed in)
-            </button>
-        </div>
-        <div id="signedInView" style="display: none;">
-            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-                <div style="flex: 1;">
-                    <div id="userName" style="font-weight: 600; font-size: 16px;"></div>
-                    <div id="userEmail" style="font-size: 12px; opacity: 0.7;"></div>
-                </div>
-                <button id="signOutBtn" style="width: auto; padding: 8px 16px; font-size: 12px;">Sign Out</button>
+                <button class="tile" id="tabWithLogsBtn" type="button">
+                    <span class="tile-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+                            <path d="M8 8h8"></path>
+                            <path d="M8 12h5"></path>
+                            <path d="M8 16h8"></path>
+                        </svg>
+                    </span>
+                    <span class="tile-title">Tab + Logs &amp; Network</span>
+                </button>
+
+                <button class="tile" id="fullPageBtn" type="button">
+                    <span class="tile-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M8 3H5a2 2 0 0 0-2 2v3"></path>
+                            <path d="M16 3h3a2 2 0 0 1 2 2v3"></path>
+                            <path d="M8 21H5a2 2 0 0 1-2-2v-3"></path>
+                            <path d="M16 21h3a2 2 0 0 0 2-2v-3"></path>
+                            <path d="M8 7h8"></path>
+                            <path d="M8 12h8"></path>
+                            <path d="M8 17h8"></path>
+                        </svg>
+                    </span>
+                    <span class="tile-title">Full Page</span>
+                </button>
             </div>
-            <button id="libraryBtn">View Library</button>
+
+            <div class="action-list">
+                <button class="action-row" id="delayedTabBtn" type="button">
+                    <span class="row-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M12 8v5l3 2"></path>
+                            <path d="M3.05 11a9 9 0 1 0 .5-2"></path>
+                            <path d="M3 4v5h5"></path>
+                        </svg>
+                    </span>
+                    <span class="row-label">Visible Part after Delay</span>
+                    <span class="delay-pill">3s</span>
+                </button>
+
+                <button class="action-row" id="screenWindowBtn" type="button">
+                    <span class="row-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="3" y="5" width="18" height="11" rx="2"></rect>
+                            <path d="M8 21h8"></path>
+                            <path d="M12 16v5"></path>
+                            <path d="M7 9h10"></path>
+                        </svg>
+                    </span>
+                    <span class="row-label">Entire Screen &amp; App Window</span>
+                </button>
+
+                <button class="action-row" id="annotateImageBtn" type="button">
+                    <span class="row-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="3" y="5" width="14" height="14" rx="2"></rect>
+                            <path d="m7 14 2.5-2.5L12 14l2-2 3 3"></path>
+                            <path d="M15 8h.01"></path>
+                            <path d="M20 14v7"></path>
+                            <path d="M16.5 17.5H23.5"></path>
+                        </svg>
+                    </span>
+                    <span class="row-label">Annotate Local &amp; Clipboard Image</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="footer">
+            <div class="footer-top">
+                <div class="account-copy">
+                    <strong id="userName">Not signed in</strong>
+                    <span id="userEmail">Sign in to share your captures</span>
+                </div>
+                <button class="mini-btn secondary" id="signOutBtn" type="button" style="display: none;">Sign Out</button>
+            </div>
+
+            <div class="footer-actions">
+                <button class="mini-btn" id="libraryBtn" type="button">Library</button>
+                <button class="mini-btn secondary" id="signInGoogleBtn" type="button">Sign In</button>
+                <button class="mini-btn secondary" id="syncAuthBtn" type="button">Sync</button>
+            </div>
         </div>
     </div>
 
-    <div class="card">
-        <!-- <button id="tab">Record Tab</button>
-        <button id="screen">Record Screen</button> -->
-        <div class="field-stack">
-            <label class="field-label" for="screenshotTarget">Capture</label>
-            <select id="screenshotTarget">
-                <option value="tab">Current Tab</option>
-                <option value="window">Window</option>
-                <option value="screen">Screen</option>
-            </select>
-            <p class="field-hint" id="captureHint">Tab capture includes page context when available. Window and screen capture open the system picker.</p>
-        </div>
-
-        <button id="screenshot">Take Screenshot</button>
-
-        <!-- <div class="toggle-container">
-            <span class="toggle-label">
-                <span id="modeLabel">🌙 Mode</span>
-            </span>
-            <label class="toggle-switch">
-                <input type="checkbox" id="modeToggle">
-                <span class="slider"></span>
-            </label>
-        </div>
-
-        </div> -->
-
-        <div class="toggle-container">
-            <span class="toggle-label">
-                <span>🌐 Network Capture</span>
-            </span>
-            <label class="toggle-switch">
-                <input type="checkbox" id="networkCaptureToggle" checked>
-                <span class="slider"></span>
-            </label>
-        </div>
-
-        <!-- <div class="toggle-container">
-            <span class="toggle-label">
-                <span>📏 Full Page Screenshot</span>
-            </span>
-            <label class="toggle-switch">
-                <input type="checkbox" id="fullPageToggle">
-                <span class="slider"></span>
-            </label>
-        </div> -->
-    </div>
-
-    <footer></footer>
-
-    <script src="script.js" type="module">
-    </script>
+    <script src="script.js" type="module"></script>
 </body>
-
 </html>
