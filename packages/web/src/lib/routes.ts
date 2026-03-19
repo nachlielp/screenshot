@@ -18,12 +18,12 @@ export function migrateLegacyPathToHashRoute() {
     return;
   }
 
-  if (
-    relativePath === "/library" ||
-    relativePath === "/privacy" ||
-    relativePath.startsWith("/snapshot/")
-  ) {
-    const nextUrl = `${basePath || ""}/#${relativePath}${window.location.search}`;
-    window.history.replaceState(null, "", nextUrl);
-  }
+  const normalizedRoute = relativePath === "/" || relativePath === ""
+    ? "/library"
+    : relativePath === "/library" || relativePath === "/privacy" || relativePath.startsWith("/snapshot/")
+      ? relativePath
+      : "/library";
+
+  const nextUrl = `${basePath || ""}/#${normalizedRoute}${window.location.search}`;
+  window.history.replaceState(null, "", nextUrl);
 }
