@@ -1,3 +1,4 @@
+const IS_PROD = 1;
 const DEFAULT_DEV_SITE_URL = "http://localhost:5173";
 const DEFAULT_PROD_SITE_URL = "https://snap.nachli.com";
 
@@ -21,7 +22,7 @@ const ENVIRONMENTS = {
   },
   production: {
     name: "production",
-    convexUrl: "https://fleet-hound-777.convex.cloud",
+    convexUrl: "https://fiery-yak-273.convex.cloud/",
     clerkPublishableKey: "pk_live_Y2xlcmsuc25hcC5uYWNobGkuY29tJA",
     clerkApiDomain: "https://clerk.snap.nachli.com",
     cookieDomains: [
@@ -38,9 +39,6 @@ const ENVIRONMENTS = {
   },
 };
 
-const PROD_EXTENSION_ID = "xxx";
-const DEV_EXTENSION_ID = "kfgenggconhplhkacoidmmbkcbbbbcng";
-
 function decodePublishableKeyFrontendApi(publishableKey) {
   const encodedFrontendApi = publishableKey?.split("_")[2];
   if (!encodedFrontendApi) {
@@ -54,18 +52,12 @@ function normalizeDomain(value) {
   return value.replace(/^https?:\/\//, "").replace(/\/+$/, "");
 }
 
+function normalizeUrl(value) {
+  return value.replace(/\/+$/, "");
+}
+
 export function getActiveEnvironment() {
-  const extensionId = chrome.runtime.id;
-
-  if (extensionId === PROD_EXTENSION_ID) {
-    return "production";
-  }
-
-  if (extensionId === DEV_EXTENSION_ID) {
-    return "development";
-  }
-
-  return "development";
+  return IS_PROD ? "production" : "development";
 }
 
 export async function getRuntimeConfig() {
@@ -95,6 +87,7 @@ export async function getRuntimeConfig() {
 
   return {
     ...baseConfig,
+    convexUrl: normalizeUrl(baseConfig.convexUrl),
     environment,
     clerkDomain,
     clerkApiDomain,
