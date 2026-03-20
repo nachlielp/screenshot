@@ -4,6 +4,7 @@ import { getRuntimeConfig } from "./runtime-config.js";
 
 // Storage key for user data
 const LEGACY_AUTH_STORAGE_KEY = 'clerk_auth';
+const PROD_SITE_URL = 'https://snap.nachli.com';
 let currentUser = null;
 let authListeners = [];
 
@@ -272,15 +273,12 @@ export async function signIn() {
 
 export async function signInWithGoogle() {
   try {
-    const config = await getRuntimeConfig();
-    // Open Clerk's sign-in page directly (not an extension page)
-    const signInUrl = `${config.clerkDomain}/sign-in`;
     await chrome.tabs.create({ 
-      url: signInUrl,
+      url: PROD_SITE_URL,
       active: true 
     });
     
-    console.log('Opened Clerk sign-in page. After signing in, click "Sync Session" in the extension popup.');
+    console.log('Opened the production web app for sign-in.');
     
     // Store the timestamp so we know when sign-in was initiated
     await chrome.storage.local.set({ 
@@ -418,6 +416,8 @@ export async function syncClerkSession(options = {}) {
       }
     }
     
+    await clearStoredAuth(notify);
+
     throw new Error(
       `No Clerk session found. Found cookies: ${allCookies.map(c => c.name).join(', ') || 'none'}. ` +
       `Please sign in with Google first, then try Sync Session again.`

@@ -1,4 +1,4 @@
-import { isAuthenticated, getCurrentUser, signInWithGoogle, signOut, onAuthChange, syncClerkSession } from './utils/auth.js';
+import { isAuthenticated, getCurrentUser, signInWithGoogle, onAuthChange, syncClerkSession } from './utils/auth.js';
 import { getRuntimeConfig } from './utils/runtime-config.js';
 import { saveCapture } from './utils/db.js';
 
@@ -9,8 +9,6 @@ const delayedTabBtn = document.getElementById("delayedTabBtn");
 const screenWindowBtn = document.getElementById("screenWindowBtn");
 const annotateImageBtn = document.getElementById("annotateImageBtn");
 const signInGoogleBtn = document.getElementById("signInGoogleBtn");
-const syncAuthBtn = document.getElementById("syncAuthBtn");
-const signOutBtn = document.getElementById("signOutBtn");
 const libraryBtn = document.getElementById("libraryBtn");
 const userName = document.getElementById("userName");
 const userEmail = document.getElementById("userEmail");
@@ -239,25 +237,34 @@ const updateAuthUI = async () => {
             const user = await getCurrentUser();
             userName.textContent = user?.fullName || user?.firstName || 'Signed in';
             userEmail.textContent = user?.primaryEmailAddress?.emailAddress || 'Ready to share captures';
-            signOutBtn.style.display = 'inline-flex';
             signInGoogleBtn.style.display = 'none';
+            libraryBtn.style.display = 'inline-flex';
         } else {
             userName.textContent = 'Not signed in';
             userEmail.textContent = 'Sign in to share your captures';
-            signOutBtn.style.display = 'none';
             signInGoogleBtn.style.display = 'inline-flex';
+            libraryBtn.style.display = 'none';
         }
     } catch (error) {
         console.error('Error updating auth UI:', error);
         userName.textContent = 'Not signed in';
         userEmail.textContent = 'Sign in to share your captures';
-        signOutBtn.style.display = 'none';
         signInGoogleBtn.style.display = 'inline-flex';
+        libraryBtn.style.display = 'none';
+    }
+};
+
+const attemptSessionSyncOnOpen = async () => {
+    try {
+        await syncClerkSession({ notify: false });
+    } catch (error) {
+        console.debug('No web session available to sync on popup open:', error);
     }
 };
 
 const initializePopup = async () => {
     try {
+        await attemptSessionSyncOnOpen();
         await updateAuthUI();
 
         visiblePartBtn?.addEventListener("click", async () => {
@@ -306,29 +313,6 @@ const initializePopup = async () => {
                 await updateAuthUI();
             } catch (error) {
                 console.error('Google sign in error:', error);
-            }
-        });
-
-        syncAuthBtn?.addEventListener("click", async () => {
-            try {
-                setButtonBusy(syncAuthBtn, true);
-                syncAuthBtn.textContent = 'Syncing...';
-                await syncClerkSession();
-                await updateAuthUI();
-            } catch (error) {
-                console.error('Sync error:', error);
-            } finally {
-                syncAuthBtn.textContent = 'Sync';
-                setButtonBusy(syncAuthBtn, false);
-            }
-        });
-
-        signOutBtn?.addEventListener("click", async () => {
-            try {
-                await signOut();
-                await updateAuthUI();
-            } catch (error) {
-                console.error('Sign out error:', error);
             }
         });
 
