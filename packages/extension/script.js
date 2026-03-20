@@ -12,6 +12,7 @@ import {
   getActiveSlideshowSession,
   appendFrameToSlideshowSession,
   setSlideshowSessionState,
+  detachActiveSlideshowSession,
 } from './utils/slideshow.js';
 
 const slideshowBtn = document.getElementById("slideshowBtn");
@@ -367,6 +368,7 @@ const initializePopup = async () => {
       }
 
       await setSlideshowSessionState(session.id, 'editing');
+      await detachActiveSlideshowSession(session.id);
       await chrome.tabs.create({
         url: chrome.runtime.getURL(`slideshow-editor.html?id=${session.id}`),
       });

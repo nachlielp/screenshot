@@ -41,6 +41,19 @@ export async function getActiveSlideshowSessionId() {
   return await getStoredActiveSessionId();
 }
 
+export async function detachActiveSlideshowSession(sessionId = null) {
+  const activeSessionId = await getStoredActiveSessionId();
+  if (!activeSessionId) {
+    return;
+  }
+
+  if (sessionId && activeSessionId !== sessionId) {
+    return;
+  }
+
+  await setActiveSlideshowSessionId(null);
+}
+
 export async function getActiveSlideshowSession() {
   const activeSessionId = await getStoredActiveSessionId();
   if (!activeSessionId) return null;

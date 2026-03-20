@@ -40,10 +40,15 @@ export default function SlideshowViewer() {
     shareToken ? { shareToken } : "skip"
   );
   const incrementView = useMutation(api.slideshows.incrementSlideshowViewCount);
+  const updateSlideshowTitle = useMutation(api.slideshows.updateSlideshowTitle);
   const viewIncrementedRef = useRef(false);
   const lastShareTokenRef = useRef<string | undefined>(undefined);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [shareState, setShareState] = useState<"idle" | "copied" | "error">("idle");
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [draftTitle, setDraftTitle] = useState("");
+  const [isSavingTitle, setIsSavingTitle] = useState(false);
+  const [titleNotice, setTitleNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (!shareToken) return;
@@ -65,11 +70,17 @@ export default function SlideshowViewer() {
   const frames = slideshow?.frames ?? [];
   const currentFrame = frames[currentIndex] ?? null;
   const canEdit = Boolean(viewerState?.canEdit);
+  const pageTitle = slideshow ? slideshow.title ?? deriveSlideshowTitle(slideshow.createdAt) : "Slideshow";
 
   const subtitle = useMemo(() => {
     if (!slideshow) return "";
     return `${slideshow.visibleFrameCount} visible frame${slideshow.visibleFrameCount !== 1 ? "s" : ""} • ${slideshow.viewCount} viewer${slideshow.viewCount !== 1 ? "s" : ""}`;
   }, [slideshow]);
+
+  useEffect(() => {
+    if (!slideshow) return;
+    setDraftTitle(pageTitle);
+  }, [pageTitle, slideshow]);
 
   const copyShareLink = async () => {
     if (!shareToken) return;
@@ -81,6 +92,30 @@ export default function SlideshowViewer() {
       setShareState("error");
     } finally {
       window.setTimeout(() => setShareState("idle"), 1800);
+    }
+  };
+
+  const handleSaveTitle = async () => {
+    if (!shareToken || !slideshow || !canEdit || isSavingTitle) return;
+
+    const trimmedTitle = draftTitle.trim();
+    const fallbackTitle = deriveSlideshowTitle(slideshow.createdAt);
+    const normalizedTitle = trimmedTitle === fallbackTitle ? undefined : trimmedTitle || undefined;
+
+    try {
+      setIsSavingTitle(true);
+      await updateSlideshowTitle({
+        shareToken,
+        title: normalizedTitle,
+      });
+      setDraftTitle(normalizedTitle ?? fallbackTitle);
+      setIsEditingTitle(false);
+      setTitleNotice("Title updated.");
+    } catch (error) {
+      console.error("Failed to update slideshow title:", error);
+      setTitleNotice("We couldn’t update the title. Please try again.");
+    } finally {
+      setIsSavingTitle(false);
     }
   };
 
@@ -105,7 +140,7 @@ export default function SlideshowViewer() {
   if (frames.length === 0) {
     return (
       <div className="ssv-empty">
-        <h1>{slideshow.title ?? "Slideshow"}</h1>
+        <h1>{pageTitle}</h1>
         <p>This slideshow has no visible frames.</p>
       </div>
     );
@@ -115,8 +150,67 @@ export default function SlideshowViewer() {
     <div className="ssv-page">
       <header className="ssv-header">
         <div>
-          <h1>{slideshow.title ?? "Slideshow"}</h1>
+          <div className="ssv-title-row">
+            {isEditingTitle ? (
+              <>
+                <input
+                  className="ssv-title-input"
+                  value={draftTitle}
+                  onChange={(event) => setDraftTitle(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void handleSaveTitle();
+                    }
+                    if (event.key === "Escape") {
+                      setDraftTitle(pageTitle);
+                      setIsEditingTitle(false);
+                    }
+                  }}
+                  placeholder="Slideshow title"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  className="ssv-title-action"
+                  onClick={() => void handleSaveTitle()}
+                  disabled={isSavingTitle}
+                >
+                  {isSavingTitle ? "Saving..." : "Save"}
+                </button>
+                <button
+                  type="button"
+                  className="ssv-title-action ssv-title-action-secondary"
+                  onClick={() => {
+                    setDraftTitle(pageTitle);
+                    setIsEditingTitle(false);
+                  }}
+                  disabled={isSavingTitle}
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <h1>{pageTitle}</h1>
+                {canEdit && (
+                  <button
+                    type="button"
+                    className="ssv-title-edit"
+                    onClick={() => {
+                      setDraftTitle(pageTitle);
+                      setIsEditingTitle(true);
+                      setTitleNotice(null);
+                    }}
+                  >
+                    Edit title
+                  </button>
+                )}
+              </>
+            )}
+          </div>
           <p>{subtitle}</p>
+          {titleNotice && <span className="ssv-owner-note">{titleNotice}</span>}
           {canEdit && slideshow.visibleFrameCount < slideshow.frameCount && (
             <span className="ssv-owner-note">Hidden frames are excluded from the shared view.</span>
           )}
@@ -217,6 +311,14 @@ export default function SlideshowViewer() {
       </main>
     </div>
   );
+}
+
+function deriveSlideshowTitle(createdAt: number) {
+  return `Slideshow ${new Date(createdAt).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  })}`;
 }
 
 function getSlideshowViewerToken() {

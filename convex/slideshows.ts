@@ -221,6 +221,44 @@ export const incrementSlideshowViewCount = mutation({
   },
 });
 
+export const updateSlideshowTitle = mutation({
+  args: {
+    shareToken: v.string(),
+    title: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const slideshow = await ctx.db
+      .query("slideshows")
+      .withIndex("by_shareToken", (q) => q.eq("shareToken", args.shareToken))
+      .first();
+
+    if (!slideshow || slideshow.expiresAt < Date.now()) {
+      throw new Error("Slideshow not found");
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerkId", (q) => q.eq("clerkId", identity.subject))
+      .first();
+
+    if (!user || slideshow.userId !== user._id) {
+      throw new Error("Not authorized");
+    }
+
+    const nextTitle = normalizeTitle(args.title);
+    await ctx.db.patch(slideshow._id, {
+      title: nextTitle,
+    });
+
+    return nextTitle ?? null;
+  },
+});
+
 async function deleteSlideshowRecord(
   ctx: MutationCtx,
   slideshow: Doc<"slideshows">
