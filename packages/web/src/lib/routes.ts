@@ -20,7 +20,10 @@ export function migrateLegacyPathToHashRoute() {
 
   const normalizedRoute = relativePath === "/" || relativePath === ""
     ? "/library"
-    : relativePath === "/library" || relativePath === "/privacy" || relativePath.startsWith("/snapshot/")
+    : relativePath === "/library" ||
+        relativePath === "/privacy" ||
+        relativePath.startsWith("/snapshot/") ||
+        relativePath.startsWith("/slideshow/")
       ? relativePath
       : "/library";
 

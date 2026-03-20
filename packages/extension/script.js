@@ -1,8 +1,20 @@
-import { isAuthenticated, getCurrentUser, signInWithGoogle, onAuthChange, syncClerkSession } from './utils/auth.js';
+import {
+  isAuthenticated,
+  getCurrentUser,
+  signInWithGoogle,
+  onAuthChange,
+  syncClerkSession,
+} from './utils/auth.js';
 import { getRuntimeConfig } from './utils/runtime-config.js';
 import { saveCapture } from './utils/db.js';
+import {
+  ensureActiveSlideshowSession,
+  getActiveSlideshowSession,
+  appendFrameToSlideshowSession,
+  setSlideshowSessionState,
+} from './utils/slideshow.js';
 
-const visiblePartBtn = document.getElementById("visiblePartBtn");
+const slideshowBtn = document.getElementById("slideshowBtn");
 const tabWithLogsBtn = document.getElementById("tabWithLogsBtn");
 const fullPageBtn = document.getElementById("fullPageBtn");
 const delayedTabBtn = document.getElementById("delayedTabBtn");
@@ -13,324 +25,413 @@ const libraryBtn = document.getElementById("libraryBtn");
 const userName = document.getElementById("userName");
 const userEmail = document.getElementById("userEmail");
 
+const homePanel = document.getElementById("homePanel");
+const slideshowPanel = document.getElementById("slideshowPanel");
+const slideshowFrameCount = document.getElementById("slideshowFrameCount");
+const slideshowFrameState = document.getElementById("slideshowFrameState");
+const slideshowFrameHint = document.getElementById("slideshowFrameHint");
+const slideshowTabBtn = document.getElementById("slideshowTabBtn");
+const slideshowScreenshotBtn = document.getElementById("slideshowScreenshotBtn");
+const slideshowFinishBtn = document.getElementById("slideshowFinishBtn");
+
 const DELAY_MS = 3000;
 const POPUP_HIDE_SETTLE_MS = 75;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const canvasToBlob = (canvas) => (
-    new Promise((resolve, reject) => {
-        canvas.toBlob((blob) => {
-            if (!blob) {
-                reject(new Error('Failed to create screenshot blob'));
-                return;
-            }
+  new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error('Failed to create screenshot blob'));
+        return;
+      }
 
-            resolve(blob);
-        }, 'image/png');
-    })
+      resolve(blob);
+    }, 'image/png');
+  })
 );
 
 const setButtonBusy = (button, busy) => {
-    if (!button) return;
-    button.disabled = busy;
+  if (!button) return;
+  button.disabled = busy;
 };
 
 const setDelayBadge = (button, label) => {
-    const badge = button?.querySelector('.delay-pill');
-    if (badge) {
-        badge.textContent = label;
-    }
+  const badge = button?.querySelector('.delay-pill');
+  if (badge) {
+    badge.textContent = label;
+  }
 };
 
 const runCountdown = async (button, seconds) => {
-    if (!button) return;
+  if (!button) return;
 
-    button.classList.add('counting-down');
-    setButtonBusy(button, true);
+  button.classList.add('counting-down');
+  setButtonBusy(button, true);
 
-    for (let remaining = seconds; remaining >= 1; remaining -= 1) {
-        setDelayBadge(button, `${remaining}s`);
-        await sleep(1000);
-    }
+  for (let remaining = seconds; remaining >= 1; remaining -= 1) {
+    setDelayBadge(button, `${remaining}s`);
+    await sleep(1000);
+  }
 };
 
 const resetCountdown = (button) => {
-    if (!button) return;
-    button.classList.remove('counting-down');
-    setButtonBusy(button, false);
-    setDelayBadge(button, '3s');
+  if (!button) return;
+  button.classList.remove('counting-down');
+  setButtonBusy(button, false);
+  setDelayBadge(button, '3s');
 };
 
 const chooseDesktopMedia = () => (
-    new Promise((resolve, reject) => {
-        chrome.desktopCapture.chooseDesktopMedia(['screen', 'window'], (streamId) => {
-            if (chrome.runtime.lastError) {
-                reject(new Error(chrome.runtime.lastError.message));
-                return;
-            }
+  new Promise((resolve, reject) => {
+    chrome.desktopCapture.chooseDesktopMedia(['screen', 'window'], (streamId) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
 
-            if (!streamId) {
-                reject(new Error('Desktop capture was cancelled'));
-                return;
-            }
+      if (!streamId) {
+        reject(new Error('Desktop capture was cancelled'));
+        return;
+      }
 
-            resolve(streamId);
-        });
-    })
+      resolve(streamId);
+    });
+  })
 );
 
 const hidePopupForCapture = () => {
-    const htmlStyle = document.documentElement.getAttribute('style');
-    const bodyStyle = document.body.getAttribute('style');
-    const childVisibility = Array.from(document.body.children).map((element) => ({
-        element,
-        visibility: element.style.visibility,
-    }));
+  const htmlStyle = document.documentElement.getAttribute('style');
+  const bodyStyle = document.body.getAttribute('style');
+  const childVisibility = Array.from(document.body.children).map((element) => ({
+    element,
+    visibility: element.style.visibility,
+  }));
 
-    document.documentElement.style.setProperty('width', '1px', 'important');
-    document.documentElement.style.setProperty('height', '1px', 'important');
-    document.documentElement.style.setProperty('min-width', '1px', 'important');
-    document.documentElement.style.setProperty('min-height', '1px', 'important');
-    document.documentElement.style.setProperty('overflow', 'hidden', 'important');
-    document.documentElement.style.setProperty('opacity', '0', 'important');
-    document.documentElement.style.setProperty('background', 'transparent', 'important');
-    document.documentElement.style.setProperty('pointer-events', 'none', 'important');
+  document.documentElement.style.setProperty('width', '1px', 'important');
+  document.documentElement.style.setProperty('height', '1px', 'important');
+  document.documentElement.style.setProperty('min-width', '1px', 'important');
+  document.documentElement.style.setProperty('min-height', '1px', 'important');
+  document.documentElement.style.setProperty('overflow', 'hidden', 'important');
+  document.documentElement.style.setProperty('opacity', '0', 'important');
+  document.documentElement.style.setProperty('background', 'transparent', 'important');
+  document.documentElement.style.setProperty('pointer-events', 'none', 'important');
 
-    document.body.style.setProperty('width', '1px', 'important');
-    document.body.style.setProperty('height', '1px', 'important');
-    document.body.style.setProperty('min-width', '1px', 'important');
-    document.body.style.setProperty('min-height', '1px', 'important');
-    document.body.style.setProperty('margin', '0', 'important');
-    document.body.style.setProperty('overflow', 'hidden', 'important');
-    document.body.style.setProperty('opacity', '0', 'important');
-    document.body.style.setProperty('background', 'transparent', 'important');
-    document.body.style.setProperty('pointer-events', 'none', 'important');
+  document.body.style.setProperty('width', '1px', 'important');
+  document.body.style.setProperty('height', '1px', 'important');
+  document.body.style.setProperty('min-width', '1px', 'important');
+  document.body.style.setProperty('min-height', '1px', 'important');
+  document.body.style.setProperty('margin', '0', 'important');
+  document.body.style.setProperty('overflow', 'hidden', 'important');
+  document.body.style.setProperty('opacity', '0', 'important');
+  document.body.style.setProperty('background', 'transparent', 'important');
+  document.body.style.setProperty('pointer-events', 'none', 'important');
 
-    childVisibility.forEach(({ element }) => {
-        element.style.visibility = 'hidden';
-    });
+  childVisibility.forEach(({ element }) => {
+    element.style.visibility = 'hidden';
+  });
 
-    try {
-        window.resizeTo(1, 1);
-    } catch (error) {
-        console.debug('Popup resize is not available:', error);
+  try {
+    window.resizeTo(1, 1);
+  } catch (error) {
+    console.debug('Popup resize is not available:', error);
+  }
+
+  return () => {
+    if (htmlStyle === null) {
+      document.documentElement.removeAttribute('style');
+    } else {
+      document.documentElement.setAttribute('style', htmlStyle);
     }
 
-    return () => {
-        if (htmlStyle === null) {
-            document.documentElement.removeAttribute('style');
-        } else {
-            document.documentElement.setAttribute('style', htmlStyle);
-        }
+    if (bodyStyle === null) {
+      document.body.removeAttribute('style');
+    } else {
+      document.body.setAttribute('style', bodyStyle);
+    }
 
-        if (bodyStyle === null) {
-            document.body.removeAttribute('style');
-        } else {
-            document.body.setAttribute('style', bodyStyle);
-        }
+    childVisibility.forEach(({ element, visibility }) => {
+      element.style.visibility = visibility;
+    });
+  };
+};
 
-        childVisibility.forEach(({ element, visibility }) => {
-            element.style.visibility = visibility;
-        });
+function formatFrameCount(count) {
+  return `${count} frame${count === 1 ? '' : 's'}`;
+}
+
+async function renderPopupMode(session = null) {
+  const activeSession = session ?? await getActiveSlideshowSession();
+  const frameCount = activeSession?.frames?.length ?? 0;
+  const inSlideshowMode = Boolean(activeSession);
+
+  homePanel.hidden = inSlideshowMode;
+  slideshowPanel.hidden = !inSlideshowMode;
+
+  if (!inSlideshowMode) {
+    return;
+  }
+
+  slideshowFrameCount.textContent = String(frameCount);
+  if (frameCount === 0) {
+    slideshowFrameState.textContent = 'Ready to start';
+    slideshowFrameHint.textContent = 'Capture your first frame from the tab or screenshot buttons below.';
+  } else if (frameCount === 1) {
+    slideshowFrameState.textContent = '1 frame captured';
+    slideshowFrameHint.textContent = 'Add more frames, or finish to move into annotation mode.';
+  } else {
+    slideshowFrameState.textContent = `${formatFrameCount(frameCount)} captured`;
+    slideshowFrameHint.textContent = 'Your slideshow draft is building up. Keep adding frames or finish to annotate.';
+  }
+  slideshowFinishBtn.disabled = frameCount === 0;
+}
+
+const captureDisplayScreenshot = async ({ slideshowSessionId = null } = {}) => {
+  const streamId = await chooseDesktopMedia();
+  const restorePopup = hidePopupForCapture();
+  await sleep(POPUP_HIDE_SETTLE_MS);
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: false,
+    video: {
+      mandatory: {
+        chromeMediaSource: 'desktop',
+        chromeMediaSourceId: streamId,
+        maxWidth: 3840,
+        maxHeight: 2160,
+        maxFrameRate: 30,
+      },
+    },
+  });
+
+  try {
+    const [videoTrack] = stream.getVideoTracks();
+    if (!videoTrack) {
+      throw new Error('No video track found for display capture');
+    }
+
+    const settings = videoTrack.getSettings ? videoTrack.getSettings() : {};
+    const video = document.createElement('video');
+    video.muted = true;
+    video.playsInline = true;
+    video.srcObject = stream;
+
+    await new Promise((resolve) => {
+      video.onloadedmetadata = () => resolve();
+    });
+    await video.play();
+
+    if (typeof video.requestVideoFrameCallback === 'function') {
+      await new Promise((resolve) => video.requestVideoFrameCallback(() => resolve()));
+    } else {
+      await sleep(150);
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+      throw new Error('Could not create canvas context');
+    }
+
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const blob = await canvasToBlob(canvas);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const captureId = crypto.randomUUID();
+    const displaySurface = settings.displaySurface || 'display';
+    const filename = `${displaySurface}-screenshot-${timestamp}.png`;
+    const deviceMeta = {
+      captureSurface: 'display',
+      displaySurface,
+      screenWidth: canvas.width,
+      screenHeight: canvas.height,
+      timestamp: new Date().toISOString(),
     };
-};
 
-const captureDisplayScreenshot = async () => {
-    const streamId = await chooseDesktopMedia();
-    const restorePopup = hidePopupForCapture();
-    await sleep(POPUP_HIDE_SETTLE_MS);
-    const stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: {
-            mandatory: {
-                chromeMediaSource: 'desktop',
-                chromeMediaSourceId: streamId,
-                maxWidth: 3840,
-                maxHeight: 2160,
-                maxFrameRate: 30,
-            },
-        },
-    });
+    await saveCapture(captureId, blob, filename, 'image/png', null, null, null, deviceMeta);
 
-    try {
-        const [videoTrack] = stream.getVideoTracks();
-        if (!videoTrack) {
-            throw new Error('No video track found for display capture');
-        }
-
-        const settings = videoTrack.getSettings ? videoTrack.getSettings() : {};
-        const video = document.createElement('video');
-        video.muted = true;
-        video.playsInline = true;
-        video.srcObject = stream;
-
-        await new Promise((resolve) => {
-            video.onloadedmetadata = () => resolve();
-        });
-        await video.play();
-
-        if (typeof video.requestVideoFrameCallback === 'function') {
-            await new Promise((resolve) => video.requestVideoFrameCallback(() => resolve()));
-        } else {
-            await sleep(150);
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-
-        const context = canvas.getContext('2d');
-        if (!context) {
-            throw new Error('Could not create canvas context');
-        }
-
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-        const blob = await canvasToBlob(canvas);
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-        const captureId = crypto.randomUUID();
-        const displaySurface = settings.displaySurface || 'display';
-        const filename = `${displaySurface}-screenshot-${timestamp}.png`;
-
-        await saveCapture(captureId, blob, filename, 'image/png', null, null, null, {
-            captureSurface: 'display',
-            displaySurface,
-            screenWidth: canvas.width,
-            screenHeight: canvas.height,
-            timestamp: new Date().toISOString(),
-        });
-
-        const editorUrl = chrome.runtime.getURL(`editor.html?id=${captureId}`);
-        await chrome.tabs.create({ url: editorUrl });
-    } catch (error) {
-        restorePopup();
-        throw error;
-    } finally {
-        stream.getTracks().forEach((track) => track.stop());
-    }
-};
-
-const takeTabScreenshot = async ({ includeLogs, fullPage, delayMs = 0 }) => {
-    if (delayMs > 0) {
-        await sleep(delayMs);
+    if (slideshowSessionId) {
+      await appendFrameToSlideshowSession(slideshowSessionId, {
+        captureId,
+        source: displaySurface === 'window' ? 'window' : 'screen',
+        filename,
+        mimeType: 'image/png',
+        width: canvas.width,
+        height: canvas.height,
+        captureTimestamp: deviceMeta.timestamp,
+        deviceMeta,
+      });
+      return;
     }
 
-    await chrome.runtime.sendMessage({
-        type: "take-screenshot",
-        target: "service-worker",
-        captureTarget: "tab",
-        includeLogs,
-        fullPage,
-    });
+    const editorUrl = chrome.runtime.getURL(`editor.html?id=${captureId}`);
+    await chrome.tabs.create({ url: editorUrl });
+  } catch (error) {
+    restorePopup();
+    throw error;
+  } finally {
+    stream.getTracks().forEach((track) => track.stop());
+  }
+};
+
+const takeTabScreenshot = async ({ includeLogs, fullPage, delayMs = 0, slideshowSessionId = null }) => {
+  if (delayMs > 0) {
+    await sleep(delayMs);
+  }
+
+  await chrome.runtime.sendMessage({
+    type: "take-screenshot",
+    target: "service-worker",
+    captureTarget: "tab",
+    includeLogs,
+    fullPage,
+    slideshowSessionId,
+  });
 };
 
 const openAnnotateImport = async () => {
-    await chrome.tabs.create({ url: chrome.runtime.getURL('import-image.html') });
+  await chrome.tabs.create({ url: chrome.runtime.getURL('import-image.html') });
 };
 
 const updateAuthUI = async () => {
-    try {
-        const authenticated = await isAuthenticated();
+  try {
+    const authenticated = await isAuthenticated();
 
-        if (authenticated) {
-            const user = await getCurrentUser();
-            userName.textContent = user?.fullName || user?.firstName || 'Signed in';
-            userEmail.textContent = user?.primaryEmailAddress?.emailAddress || 'Ready to share captures';
-            signInGoogleBtn.style.display = 'none';
-            libraryBtn.style.display = 'inline-flex';
-        } else {
-            userName.textContent = 'Not signed in';
-            userEmail.textContent = 'Sign in to share your captures';
-            signInGoogleBtn.style.display = 'inline-flex';
-            libraryBtn.style.display = 'none';
-        }
-    } catch (error) {
-        console.error('Error updating auth UI:', error);
-        userName.textContent = 'Not signed in';
-        userEmail.textContent = 'Sign in to share your captures';
-        signInGoogleBtn.style.display = 'inline-flex';
-        libraryBtn.style.display = 'none';
+    if (authenticated) {
+      const user = await getCurrentUser();
+      userName.textContent = user?.fullName || user?.firstName || 'Signed in';
+      userEmail.textContent = user?.primaryEmailAddress?.emailAddress || 'Ready to share captures';
+      signInGoogleBtn.style.display = 'none';
+      libraryBtn.style.display = 'inline-flex';
+    } else {
+      userName.textContent = 'Not signed in';
+      userEmail.textContent = 'Sign in to share your captures';
+      signInGoogleBtn.style.display = 'inline-flex';
+      libraryBtn.style.display = 'none';
     }
+  } catch (error) {
+    console.error('Error updating auth UI:', error);
+    userName.textContent = 'Not signed in';
+    userEmail.textContent = 'Sign in to share your captures';
+    signInGoogleBtn.style.display = 'inline-flex';
+    libraryBtn.style.display = 'none';
+  }
 };
 
 const attemptSessionSyncOnOpen = async () => {
-    try {
-        await syncClerkSession({ notify: false });
-    } catch (error) {
-        console.debug('No web session available to sync on popup open:', error);
-    }
+  try {
+    await syncClerkSession({ notify: false });
+  } catch (error) {
+    console.debug('No web session available to sync on popup open:', error);
+  }
 };
 
 const initializePopup = async () => {
-    try {
-        await attemptSessionSyncOnOpen();
+  try {
+    await attemptSessionSyncOnOpen();
+    await updateAuthUI();
+    await renderPopupMode();
+
+    slideshowBtn?.addEventListener("click", async () => {
+      const session = await ensureActiveSlideshowSession();
+      await renderPopupMode(session);
+    });
+
+    slideshowTabBtn?.addEventListener("click", async () => {
+      const session = await ensureActiveSlideshowSession();
+      await takeTabScreenshot({
+        includeLogs: false,
+        fullPage: false,
+        slideshowSessionId: session.id,
+      });
+      window.close();
+    });
+
+    slideshowScreenshotBtn?.addEventListener("click", async () => {
+      try {
+        const session = await ensureActiveSlideshowSession();
+        await captureDisplayScreenshot({ slideshowSessionId: session.id });
+        window.close();
+      } catch (error) {
+        console.error("Slideshow screenshot capture failed:", error);
+      }
+    });
+
+    slideshowFinishBtn?.addEventListener("click", async () => {
+      const session = await getActiveSlideshowSession();
+      if (!session || (session.frames?.length ?? 0) === 0) {
+        return;
+      }
+
+      await setSlideshowSessionState(session.id, 'editing');
+      await chrome.tabs.create({
+        url: chrome.runtime.getURL(`slideshow-editor.html?id=${session.id}`),
+      });
+      window.close();
+    });
+
+    tabWithLogsBtn?.addEventListener("click", async () => {
+      await takeTabScreenshot({ includeLogs: true, fullPage: false });
+      window.close();
+    });
+
+    fullPageBtn?.addEventListener("click", async () => {
+      await takeTabScreenshot({ includeLogs: false, fullPage: true });
+      window.close();
+    });
+
+    delayedTabBtn?.addEventListener("click", async () => {
+      try {
+        await runCountdown(delayedTabBtn, DELAY_MS / 1000);
+        await takeTabScreenshot({ includeLogs: false, fullPage: false });
+        window.close();
+      } catch (error) {
+        console.error("Delayed tab capture failed:", error);
+        resetCountdown(delayedTabBtn);
+      }
+    });
+
+    screenWindowBtn?.addEventListener("click", async () => {
+      try {
+        await captureDisplayScreenshot();
+        window.close();
+      } catch (error) {
+        console.error("Display capture failed:", error);
+      }
+    });
+
+    annotateImageBtn?.addEventListener("click", async () => {
+      await openAnnotateImport();
+      window.close();
+    });
+
+    signInGoogleBtn?.addEventListener("click", async () => {
+      try {
+        await signInWithGoogle();
         await updateAuthUI();
+      } catch (error) {
+        console.error('Google sign in error:', error);
+      }
+    });
 
-        visiblePartBtn?.addEventListener("click", async () => {
-            await takeTabScreenshot({ includeLogs: false, fullPage: false });
-            window.close();
-        });
+    libraryBtn?.addEventListener("click", async () => {
+      try {
+        const config = await getRuntimeConfig();
+        chrome.tabs.create({ url: `${config.siteUrl}/#/library` });
+      } catch (error) {
+        console.error('Library URL error:', error);
+      }
+    });
 
-        tabWithLogsBtn?.addEventListener("click", async () => {
-            await takeTabScreenshot({ includeLogs: true, fullPage: false });
-            window.close();
-        });
-
-        fullPageBtn?.addEventListener("click", async () => {
-            await takeTabScreenshot({ includeLogs: false, fullPage: true });
-            window.close();
-        });
-
-        delayedTabBtn?.addEventListener("click", async () => {
-            try {
-                await runCountdown(delayedTabBtn, DELAY_MS / 1000);
-                await takeTabScreenshot({ includeLogs: false, fullPage: false });
-                window.close();
-            } catch (error) {
-                console.error("Delayed tab capture failed:", error);
-                resetCountdown(delayedTabBtn);
-            }
-        });
-
-        screenWindowBtn?.addEventListener("click", async () => {
-            try {
-                await captureDisplayScreenshot();
-                window.close();
-            } catch (error) {
-                console.error("Display capture failed:", error);
-            }
-        });
-
-        annotateImageBtn?.addEventListener("click", async () => {
-            await openAnnotateImport();
-            window.close();
-        });
-
-        signInGoogleBtn?.addEventListener("click", async () => {
-            try {
-                await signInWithGoogle();
-                await updateAuthUI();
-            } catch (error) {
-                console.error('Google sign in error:', error);
-            }
-        });
-
-        libraryBtn?.addEventListener("click", async () => {
-            try {
-                const config = await getRuntimeConfig();
-                chrome.tabs.create({ url: `${config.siteUrl}/#/library` });
-            } catch (error) {
-                console.error('Library URL error:', error);
-            }
-        });
-
-        onAuthChange(async () => {
-            await updateAuthUI();
-        });
-    } catch (error) {
-        console.error("[Popup Initialization] Error:", error);
-    }
+    onAuthChange(async () => {
+      await updateAuthUI();
+    });
+  } catch (error) {
+    console.error("[Popup Initialization] Error:", error);
+  }
 };
 
 initializePopup();

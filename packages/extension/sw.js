@@ -1,4 +1,5 @@
 import { saveCapture, cleanupExpiredCaptures } from './utils/db.js';
+import { appendFrameToSlideshowSession } from './utils/slideshow.js';
 
 // Clean up expired captures on service worker startup
 cleanupExpiredCaptures().catch(console.error);
@@ -109,7 +110,7 @@ const captureDesktopSurface = (streamId, captureTarget) => (
  * @param {"screen"|"window"} captureTarget
  * @param {string} streamId
  */
-const takeDesktopScreenshot = async (captureTarget, streamId) => {
+const takeDesktopScreenshot = async (captureTarget, streamId, slideshowSessionId = null) => {
     await ensureOffscreenDocument();
 
     const { dataUrl, deviceMeta } = await captureDesktopSurface(streamId, captureTarget);
@@ -120,6 +121,20 @@ const takeDesktopScreenshot = async (captureTarget, streamId) => {
     const captureId = crypto.randomUUID();
 
     await saveCapture(captureId, blob, filename, 'image/png', null, null, null, deviceMeta);
+
+    if (slideshowSessionId) {
+        await appendFrameToSlideshowSession(slideshowSessionId, {
+            captureId,
+            source: captureTarget,
+            filename,
+            mimeType: 'image/png',
+            width: deviceMeta?.screenWidth,
+            height: deviceMeta?.screenHeight,
+            captureTimestamp: deviceMeta?.timestamp,
+            deviceMeta,
+        });
+        return;
+    }
 
     const editorUrl = chrome.runtime.getURL(`editor.html?id=${captureId}`);
     await chrome.tabs.create({ url: editorUrl });
@@ -230,7 +245,11 @@ const takeScreenshot = async (captureTarget = "tab", options = {}) => {
     }
 
     try {
-        const { fullPage = null, includeLogs = null } = options;
+        const {
+            fullPage = null,
+            includeLogs = null,
+            slideshowSessionId = null,
+        } = options;
         const storedPrefs = await chrome.storage.local.get(['fullPageScreenshot', 'networkCaptureEnabled']);
         const fullPageScreenshot = typeof fullPage === 'boolean' ? fullPage : (storedPrefs.fullPageScreenshot || false);
         const networkCaptureEnabled = typeof includeLogs === 'boolean'
@@ -318,7 +337,22 @@ const takeScreenshot = async (captureTarget = "tab", options = {}) => {
         // Save to IndexedDB with unique ID
         const captureId = crypto.randomUUID();
         await saveCapture(captureId, blob, filename, 'image/png', consoleLogs, networkLogs, activeTab.url || null, deviceMeta);
-        
+
+        if (slideshowSessionId) {
+            await appendFrameToSlideshowSession(slideshowSessionId, {
+                captureId,
+                source: 'tab',
+                sourceUrl: activeTab.url || undefined,
+                filename,
+                mimeType: 'image/png',
+                width: deviceMeta?.viewportWidth,
+                height: deviceMeta?.viewportHeight,
+                captureTimestamp: deviceMeta?.timestamp,
+                deviceMeta,
+            });
+            return;
+        }
+
         // Open editor tab instead of preview
         const editorUrl = chrome.runtime.getURL(`editor.html?id=${captureId}`);
         await chrome.tabs.create({ url: editorUrl });
@@ -392,12 +426,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     await takeScreenshot(request.captureTarget, {
                         includeLogs: request.includeLogs,
                         fullPage: request.fullPage,
+                        slideshowSessionId: request.slideshowSessionId,
                     });
                     sendResponse({ success: true });
                     break;
                 case "take-desktop-screenshot":
                     console.log("Taking desktop screenshot...", request.captureTarget);
-                    await takeDesktopScreenshot(request.captureTarget, request.streamId);
+                    await takeDesktopScreenshot(
+                        request.captureTarget,
+                        request.streamId,
+                        request.slideshowSessionId || null
+                    );
                     sendResponse({ success: true });
                     break;
                 case "capture-viewport-part":

@@ -74,6 +74,90 @@ function getExtraFieldFromConvexError(errorMessage) {
   return match?.[1] || null;
 }
 
+async function ensureConvexUser(convexUrl, token, user) {
+  const userResponse = await fetch(`${convexUrl}/api/mutation`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      path: 'screenshots:getOrCreateUser',
+      args: {
+        clerkId: user.id,
+        email: user.primaryEmailAddress?.emailAddress || user.emailAddresses?.[0]?.emailAddress || user.email || '',
+        name: user.fullName || user.firstName || undefined,
+      },
+    }),
+  });
+
+  if (!userResponse.ok) {
+    const errorBody = await userResponse.text();
+    console.error('Convex mutation failed:', userResponse.status, errorBody);
+    const friendlyError = await getFriendlyConvexAuthError(userResponse.status, errorBody, token);
+    throw new Error(
+      friendlyError || `Failed to create/get user in Convex: ${userResponse.status} - ${errorBody}`
+    );
+  }
+}
+
+async function getStorageUploadUrl(convexUrl, token) {
+  const uploadUrlResponse = await fetch(`${convexUrl}/api/mutation`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      path: 'screenshots:generateUploadUrl',
+      args: {},
+    }),
+  });
+
+  if (!uploadUrlResponse.ok) {
+    throw new Error('Failed to generate upload URL');
+  }
+
+  const { value: uploadUrl } = await uploadUrlResponse.json();
+  return uploadUrl;
+}
+
+async function uploadBlobToStorage(uploadUrl, blob, mimeType) {
+  const uploadResponse = await fetch(uploadUrl, {
+    method: 'POST',
+    body: blob,
+    headers: {
+      'Content-Type': mimeType,
+    },
+  });
+
+  if (!uploadResponse.ok) {
+    throw new Error('Failed to upload file to storage');
+  }
+
+  const { storageId } = await uploadResponse.json();
+  return storageId;
+}
+
+async function getAuthenticatedConvexContext() {
+  const authenticated = await isAuthenticated();
+  if (!authenticated) {
+    throw new Error('You must be signed in to upload');
+  }
+
+  const { convexUrl } = await getRuntimeConfig();
+  const user = await getCurrentUser();
+  const token = await getAuthToken();
+
+  if (!user || !token) {
+    throw new Error('Failed to get authentication credentials');
+  }
+
+  await ensureConvexUser(convexUrl, token, user);
+
+  return { convexUrl, token, user };
+}
+
 async function createScreenshotRecord(token, args) {
   const { convexUrl } = await getRuntimeConfig();
   const ignoredFields = [];
@@ -130,20 +214,8 @@ async function createScreenshotRecord(token, args) {
  * @returns {Promise<{shareUrl: string, publicUrl: string}>}
  */
 export async function uploadToConvex(blob, filename, mimeType, type, metadata = {}, consoleLogs = null, networkLogs = null, deviceMeta = null) {
-  // Check if authenticated
-  const authenticated = await isAuthenticated();
-  if (!authenticated) {
-    throw new Error('You must be signed in to upload');
-  }
-
   try {
-    const { convexUrl } = await getRuntimeConfig();
-    const user = await getCurrentUser();
-    const token = await getAuthToken();
-    
-    if (!user || !token) {
-      throw new Error('Failed to get authentication credentials');
-    }
+    const { convexUrl, token, user } = await getAuthenticatedConvexContext();
     
     console.log('Upload auth - user:', user.email, 'token length:', token?.length, 'token prefix:', token?.substring(0, 20));
     
@@ -162,65 +234,9 @@ export async function uploadToConvex(blob, filename, mimeType, type, metadata = 
       console.log('Could not decode JWT:', e);
     }
 
-    // Step 1: Get or create user in Convex
-    const userResponse = await fetch(`${convexUrl}/api/mutation`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        path: 'screenshots:getOrCreateUser',
-        args: {
-          clerkId: user.id,
-          email: user.primaryEmailAddress?.emailAddress || user.emailAddresses?.[0]?.emailAddress || user.email || '',
-          name: user.fullName || user.firstName || undefined,
-        },
-      }),
-    });
+    const uploadUrl = await getStorageUploadUrl(convexUrl, token);
 
-    if (!userResponse.ok) {
-      const errorBody = await userResponse.text();
-      console.error('Convex mutation failed:', userResponse.status, errorBody);
-      const friendlyError = await getFriendlyConvexAuthError(userResponse.status, errorBody, token);
-      throw new Error(
-        friendlyError || `Failed to create/get user in Convex: ${userResponse.status} - ${errorBody}`
-      );
-    }
-
-    // Step 2: Generate upload URL for main file
-    const uploadUrlResponse = await fetch(`${convexUrl}/api/mutation`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        path: 'screenshots:generateUploadUrl',
-        args: {},
-      }),
-    });
-
-    if (!uploadUrlResponse.ok) {
-      throw new Error('Failed to generate upload URL');
-    }
-
-    const { value: uploadUrl } = await uploadUrlResponse.json();
-
-    // Step 3: Upload main file to Convex storage
-    const uploadResponse = await fetch(uploadUrl, {
-      method: 'POST',
-      body: blob,
-      headers: {
-        'Content-Type': mimeType,
-      },
-    });
-
-    if (!uploadResponse.ok) {
-      throw new Error('Failed to upload file to storage');
-    }
-
-    const { storageId } = await uploadResponse.json();
+    const storageId = await uploadBlobToStorage(uploadUrl, blob, mimeType);
     
     // Step 3.5: Upload console logs if provided
     let consoleLogsStorageId = undefined;
@@ -323,6 +339,78 @@ export async function uploadToConvex(blob, filename, mimeType, type, metadata = 
     };
   } catch (error) {
     console.error('Error uploading to Convex:', error);
+    throw error;
+  }
+}
+
+export async function uploadSlideshowToConvex(session) {
+  if (!session || !Array.isArray(session.frames) || session.frames.length === 0) {
+    throw new Error('Slideshow draft is empty');
+  }
+
+  try {
+    const { convexUrl, token } = await getAuthenticatedConvexContext();
+    const uploadedFrames = [];
+
+    for (const frame of session.frames) {
+      const capture = frame.capture;
+      const blob = capture?.blob;
+      const mimeType = capture?.mimeType || frame.mimeType || 'image/png';
+      const filename = capture?.filename || frame.filename || `frame-${frame.order}.png`;
+
+      if (!blob) {
+        throw new Error(`Missing frame data for ${filename}`);
+      }
+
+      const uploadUrl = await getStorageUploadUrl(convexUrl, token);
+      const storageId = await uploadBlobToStorage(uploadUrl, blob, mimeType);
+
+      uploadedFrames.push({
+        storageId,
+        filename,
+        mimeType,
+        width: frame.width || undefined,
+        height: frame.height || undefined,
+        sourceUrl: frame.sourceUrl || capture?.sourceUrl || undefined,
+        captureTimestamp: frame.captureTimestamp || capture?.deviceMeta?.timestamp || undefined,
+        hidden: Boolean(frame.hidden),
+        order: frame.order,
+      });
+    }
+
+    const response = await fetch(`${convexUrl}/api/mutation`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        path: 'slideshows:uploadSlideshow',
+        args: {
+          title: session.title,
+          frames: uploadedFrames,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`Failed to create slideshow record: ${errorBody}`);
+    }
+
+    const payload = await response.json();
+    const result = payload.value || payload;
+    const { siteUrl } = await getRuntimeConfig();
+
+    return {
+      shareToken: result.shareToken || '',
+      shareUrl: `${siteUrl}/#/slideshow/${result.shareToken}`,
+      coverPublicUrl: result.coverPublicUrl || '',
+      frameCount: result.frameCount || uploadedFrames.length,
+      visibleFrameCount: result.visibleFrameCount || uploadedFrames.filter((frame) => !frame.hidden).length,
+    };
+  } catch (error) {
+    console.error('Error uploading slideshow to Convex:', error);
     throw error;
   }
 }

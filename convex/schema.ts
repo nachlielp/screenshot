@@ -16,6 +16,19 @@ const markedView = v.object({
   items: v.array(markedItem),
 });
 
+const slideshowFrame = v.object({
+  storageId: v.id("_storage"),
+  publicUrl: v.string(),
+  filename: v.string(),
+  mimeType: v.string(),
+  width: v.optional(v.number()),
+  height: v.optional(v.number()),
+  sourceUrl: v.optional(v.string()),
+  captureTimestamp: v.optional(v.string()),
+  hidden: v.boolean(),
+  order: v.number(),
+});
+
 export default defineSchema({
   users: defineTable({
     clerkId: v.string(),
@@ -71,6 +84,26 @@ export default defineSchema({
     viewerTokens: v.optional(v.array(v.string())),
     lastViewedAt: v.optional(v.number()),
     markedView: v.optional(markedView),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_shareToken", ["shareToken"])
+    .index("by_expiresAt", ["expiresAt"]),
+
+  slideshows: defineTable({
+    userId: v.id("users"),
+    title: v.optional(v.string()),
+    shareToken: v.string(),
+    coverPublicUrl: v.string(),
+    sourceUrl: v.optional(v.string()),
+    frameCount: v.number(),
+    visibleFrameCount: v.number(),
+    frames: v.array(slideshowFrame),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    isPublic: v.boolean(),
+    viewCount: v.number(),
+    viewerTokens: v.optional(v.array(v.string())),
+    lastViewedAt: v.optional(v.number()),
   })
     .index("by_userId", ["userId"])
     .index("by_shareToken", ["shareToken"])

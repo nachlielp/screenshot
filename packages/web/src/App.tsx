@@ -3,6 +3,7 @@ import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { ConvexReactClient } from "convex/react";
 import { useAuth } from "@clerk/clerk-react";
 import SnapshotViewer from "./pages/SnapshotViewer";
+import SlideshowViewer from "./pages/SlideshowViewer";
 import Library from "./pages/Library";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 
@@ -13,6 +14,7 @@ export default function App() {
     <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
       <Routes>
         <Route path="/snapshot/:shareToken" element={<SnapshotViewer />} />
+        <Route path="/slideshow/:shareToken" element={<SlideshowViewer />} />
         <Route path="/library" element={<Library />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />
         <Route path="/" element={<Navigate to="/library" replace />} />

@@ -13,6 +13,71 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import { buildAppUrl } from "../lib/routes";
 import "./Library.css";
 
+type ScreenshotCaptureType = "screenshot" | "tab-recording" | "screen-recording";
+
+interface ScreenshotItem {
+  kind: "screenshot";
+  _id: Id<"screenshots">;
+  filename: string;
+  title?: string;
+  mimeType: string;
+  publicUrl: string;
+  sourceUrl?: string;
+  type: ScreenshotCaptureType;
+  createdAt: number;
+  viewCount: number;
+  shareToken: string;
+  fileSize: number;
+}
+
+interface SlideshowItem {
+  kind: "slideshow";
+  _id: Id<"slideshows">;
+  filename: string;
+  title?: string;
+  mimeType: "image/slideshow";
+  publicUrl: string;
+  sourceUrl?: string;
+  type: "slideshow";
+  createdAt: number;
+  viewCount: number;
+  shareToken: string;
+  frameCount: number;
+  visibleFrameCount: number;
+}
+
+type LibraryItem = ScreenshotItem | SlideshowItem;
+
+interface ConfirmState {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  onConfirm: () => Promise<void>;
+}
+
+const LIBRARY_GROUPING_STORAGE_KEY = "library-grouping";
+
+function getStoredLibraryGrouping(): "none" | "date" | "domain" {
+  if (typeof window === "undefined") return "none";
+
+  const stored = window.localStorage.getItem(LIBRARY_GROUPING_STORAGE_KEY);
+  if (stored === "date" || stored === "domain" || stored === "none") {
+    return stored;
+  }
+
+  return "none";
+}
+
+function getItemKey(item: LibraryItem) {
+  return `${item.kind}:${item._id}`;
+}
+
+function buildItemPath(item: LibraryItem) {
+  return item.kind === "slideshow"
+    ? `/slideshow/${item.shareToken}`
+    : `/snapshot/${item.shareToken}`;
+}
+
 export default function Library() {
   return (
     <>
@@ -40,68 +105,32 @@ function UnauthenticatedView() {
   );
 }
 
-interface Screenshot {
-  _id: Id<"screenshots">;
-  filename: string;
-  title?: string;
-  mimeType: string;
-  fileSize: number;
-  publicUrl: string;
-  htmlPublicUrl?: string;
-  consoleLogsUrl?: string;
-  networkLogsUrl?: string;
-  sourceUrl?: string;
-  type: "screenshot" | "tab-recording" | "screen-recording";
-  createdAt: number;
-  viewCount: number;
-  shareToken: string;
-}
-
-interface ConfirmState {
-  title: string;
-  description: string;
-  confirmLabel: string;
-  onConfirm: () => Promise<void>;
-}
-
-const LIBRARY_GROUPING_STORAGE_KEY = "library-grouping";
-
-function getStoredLibraryGrouping(): "none" | "date" | "domain" {
-  if (typeof window === "undefined") return "none";
-
-  const stored = window.localStorage.getItem(LIBRARY_GROUPING_STORAGE_KEY);
-  if (stored === "date" || stored === "domain" || stored === "none") {
-    return stored;
-  }
-
-  return "none";
-}
-
 function AuthenticatedLibrary() {
   const { user } = useUser();
-  const screenshots = useQuery(api.screenshots.getUserScreenshots, {
+  const libraryItems = useQuery(api.library.getUserLibraryItems, {
     limit: 100,
-  }) as Screenshot[] | undefined;
+  }) as LibraryItem[] | undefined;
   const deleteScreenshot = useMutation(api.screenshots.deleteScreenshot);
-  const deleteScreenshots = useMutation(api.screenshots.deleteScreenshots);
+  const deleteSlideshow = useMutation(api.slideshows.deleteSlideshow);
 
   const [currentGrouping, setCurrentGrouping] = useState<
     "none" | "date" | "domain"
   >(getStoredLibraryGrouping);
   const [selectMode, setSelectMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [lastSelectedKey, setLastSelectedKey] = useState<string | null>(null);
   const [showGroupMenu, setShowGroupMenu] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
-  const groupedScreenshots = screenshots
-    ? groupScreenshots(screenshots, currentGrouping)
-    : [];
-  const orderedScreenshots = groupedScreenshots.flatMap((group) => group.items);
 
-  const showToast = useCallback((msg: string) => {
-    setToast(msg);
+  const groupedItems = libraryItems
+    ? groupLibraryItems(libraryItems, currentGrouping)
+    : [];
+  const orderedItems = groupedItems.flatMap((group) => group.items);
+
+  const showToast = useCallback((message: string) => {
+    setToast(message);
     setTimeout(() => setToast(null), 3000);
   }, []);
 
@@ -121,91 +150,102 @@ function AuthenticatedLibrary() {
     }
   }, [confirmState]);
 
-  const handleDelete = (id: Id<"screenshots">) => {
+  const deleteItem = async (item: LibraryItem) => {
+    if (item.kind === "slideshow") {
+      await deleteSlideshow({ id: item._id });
+      return;
+    }
+
+    await deleteScreenshot({ id: item._id });
+  };
+
+  const handleDelete = (item: LibraryItem) => {
+    const noun = item.kind === "slideshow" ? "slideshow" : "capture";
     setConfirmState({
-      title: "Delete capture?",
+      title: `Delete ${noun}?`,
       description:
-        "This capture will be removed from your library and can’t be restored.",
-      confirmLabel: "Delete capture",
+        item.kind === "slideshow"
+          ? "This slideshow and all of its frames will be removed from your library."
+          : "This capture will be removed from your library and can’t be restored.",
+      confirmLabel: `Delete ${noun}`,
       onConfirm: async () => {
         try {
-          await deleteScreenshot({ id });
-          showToast("✓ Capture deleted");
+          await deleteItem(item);
+          showToast(`✓ ${item.kind === "slideshow" ? "Slideshow" : "Capture"} deleted`);
         } catch {
-          showToast("Failed to delete capture");
+          showToast(`Failed to delete ${noun}`);
         }
       },
     });
   };
 
   const handleBatchDelete = () => {
-    if (selectedIds.size === 0) return;
-    const count = selectedIds.size;
+    if (selectedKeys.size === 0) return;
+    const selectedItems = orderedItems.filter((item) => selectedKeys.has(getItemKey(item)));
+    const count = selectedItems.length;
+
     setConfirmState({
-      title: `Delete ${count} capture${count > 1 ? "s" : ""}?`,
+      title: `Delete ${count} item${count !== 1 ? "s" : ""}?`,
       description:
-        "This permanently removes the selected captures from your library.",
+        "This permanently removes the selected captures and slideshows from your library.",
       confirmLabel: `Delete ${count}`,
       onConfirm: async () => {
         try {
-          const ids = Array.from(selectedIds) as Id<"screenshots">[];
-          const { deleted } = await deleteScreenshots({ ids });
-          setSelectedIds(new Set());
+          for (const item of selectedItems) {
+            await deleteItem(item);
+          }
+          setSelectedKeys(new Set());
           setSelectMode(false);
-          showToast(`✓ Deleted ${deleted} capture${deleted > 1 ? "s" : ""}`);
+          showToast(`✓ Deleted ${count} item${count !== 1 ? "s" : ""}`);
         } catch {
-          showToast("Failed to delete selected captures");
+          showToast("Failed to delete selected items");
         }
       },
     });
   };
 
-  const toggleSelection = (id: string, shiftKey: boolean = false) => {
-    if (shiftKey && lastSelectedId && orderedScreenshots.length > 0) {
-      // Find indices of last selected and current item
-      const lastIndex = orderedScreenshots.findIndex(
-        (s) => s._id === lastSelectedId
-      );
-      const currentIndex = orderedScreenshots.findIndex((s) => s._id === id);
+  const toggleSelection = (item: LibraryItem, shiftKey = false) => {
+    const key = getItemKey(item);
+
+    if (shiftKey && lastSelectedKey && orderedItems.length > 0) {
+      const lastIndex = orderedItems.findIndex((entry) => getItemKey(entry) === lastSelectedKey);
+      const currentIndex = orderedItems.findIndex((entry) => getItemKey(entry) === key);
 
       if (lastIndex !== -1 && currentIndex !== -1) {
-        // Select all items in the range
         const start = Math.min(lastIndex, currentIndex);
         const end = Math.max(lastIndex, currentIndex);
-        const rangeIds = orderedScreenshots
-          .slice(start, end + 1)
-          .map((s) => s._id);
+        const rangeKeys = orderedItems.slice(start, end + 1).map(getItemKey);
 
-        setSelectedIds((prev) => {
-          const next = new Set(prev);
-          rangeIds.forEach((rangeId) => next.add(rangeId));
+        setSelectedKeys((previous) => {
+          const next = new Set(previous);
+          rangeKeys.forEach((rangeKey) => next.add(rangeKey));
           return next;
         });
-        setLastSelectedId(id);
+        setLastSelectedKey(key);
         return;
       }
     }
 
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+    setSelectedKeys((previous) => {
+      const next = new Set(previous);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
-    setLastSelectedId(id);
+    setLastSelectedKey(key);
   };
 
   const selectAll = () => {
-    if (!screenshots) return;
-    setSelectedIds(new Set(screenshots.map((s) => s._id)));
+    if (!libraryItems) return;
+    setSelectedKeys(new Set(libraryItems.map(getItemKey)));
   };
 
-  const openSnapshot = (screenshot: Screenshot) => {
-    window.open(buildAppUrl(`/snapshot/${screenshot.shareToken}`), "_blank");
+  const openItem = (item: LibraryItem) => {
+    window.open(buildAppUrl(buildItemPath(item)), "_blank");
   };
 
-  const copyShareLink = async (screenshot: Screenshot) => {
-    const url = buildAppUrl(`/snapshot/${screenshot.shareToken}`);
+  const copyShareLink = async (item: LibraryItem) => {
+    const url = buildAppUrl(buildItemPath(item));
     try {
       await navigator.clipboard.writeText(url);
       showToast("✓ Link copied to clipboard!");
@@ -214,10 +254,9 @@ function AuthenticatedLibrary() {
     }
   };
 
-  // Close group menu on outside click
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (!(e.target as Element).closest(".lib-grouping-controls")) {
+    const handler = (event: MouseEvent) => {
+      if (!(event.target as Element).closest(".lib-grouping-controls")) {
         setShowGroupMenu(false);
       }
     };
@@ -226,13 +265,10 @@ function AuthenticatedLibrary() {
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem(
-      LIBRARY_GROUPING_STORAGE_KEY,
-      currentGrouping
-    );
+    window.localStorage.setItem(LIBRARY_GROUPING_STORAGE_KEY, currentGrouping);
   }, [currentGrouping]);
 
-  if (screenshots === undefined) {
+  if (libraryItems === undefined) {
     return (
       <div className="lib-page">
         <div className="lib-loading">Loading your captures…</div>
@@ -242,13 +278,12 @@ function AuthenticatedLibrary() {
 
   return (
     <div className="lib-page">
-      {/* Header */}
       <header className="lib-header">
         <div className="lib-header-top">
           <div className="lib-header-left">
             <h1>📸 Capture Library</h1>
             <p className="lib-subtitle">
-              {screenshots.length} capture{screenshots.length !== 1 ? "s" : ""}
+              {libraryItems.length} item{libraryItems.length !== 1 ? "s" : ""}
             </p>
           </div>
           <div className="lib-header-right">
@@ -275,15 +310,15 @@ function AuthenticatedLibrary() {
                 <button
                   className="lib-btn lib-btn-danger"
                   onClick={handleBatchDelete}
-                  disabled={selectedIds.size === 0}
+                  disabled={selectedKeys.size === 0}
                 >
-                  Delete ({selectedIds.size})
+                  Delete ({selectedKeys.size})
                 </button>
                 <button
                   className="lib-btn lib-btn-outline"
                   onClick={() => {
                     setSelectMode(false);
-                    setSelectedIds(new Set());
+                    setSelectedKeys(new Set());
                   }}
                 >
                   Cancel
@@ -295,22 +330,22 @@ function AuthenticatedLibrary() {
             <div className="lib-grouping-controls">
               <button
                 className="lib-btn lib-btn-outline"
-                onClick={() => setShowGroupMenu((p) => !p)}
+                onClick={() => setShowGroupMenu((open) => !open)}
               >
                 Group: {currentGrouping === "none" ? "None" : currentGrouping}
               </button>
               {showGroupMenu && (
                 <div className="lib-grouping-menu">
-                  {(["none", "date", "domain"] as const).map((g) => (
+                  {(["none", "date", "domain"] as const).map((grouping) => (
                     <button
-                      key={g}
-                      className={`lib-grouping-option${currentGrouping === g ? " active" : ""}`}
+                      key={grouping}
+                      className={`lib-grouping-option${currentGrouping === grouping ? " active" : ""}`}
                       onClick={() => {
-                        setCurrentGrouping(g);
+                        setCurrentGrouping(grouping);
                         setShowGroupMenu(false);
                       }}
                     >
-                      {g === "none" ? "No grouping" : `By ${g}`}
+                      {grouping === "none" ? "No grouping" : `By ${grouping}`}
                     </button>
                   ))}
                 </div>
@@ -320,36 +355,31 @@ function AuthenticatedLibrary() {
         </div>
       </header>
 
-      {/* Content */}
-      {screenshots.length === 0 ? (
+      {libraryItems.length === 0 ? (
         <div className="lib-empty">
           <h2>No captures yet</h2>
-          <p>
-            Install the Screenshot Chrome extension and start recording or taking
-            screenshots!
-          </p>
+          <p>Install the Screenshot extension and start taking screenshots or building slideshows.</p>
         </div>
       ) : (
-          <div className="lib-content">
-            {groupedScreenshots.map((group, index) => (
-              <GroupSection
-                key={group.label}
-                label={group.label}
-                screenshots={group.items}
-                selectMode={selectMode}
-              selectedIds={selectedIds}
+        <div className="lib-content">
+          {groupedItems.map((group, index) => (
+            <GroupSection
+              key={group.label}
+              label={group.label}
+              items={group.items}
+              selectMode={selectMode}
+              selectedKeys={selectedKeys}
               onToggleSelect={toggleSelection}
-                onDelete={handleDelete}
-                onOpen={openSnapshot}
-                onCopyLink={copyShareLink}
-                showLabel={currentGrouping !== "none"}
-                groupIndex={index}
-              />
-            ))}
-          </div>
+              onDelete={handleDelete}
+              onOpen={openItem}
+              onCopyLink={copyShareLink}
+              showLabel={currentGrouping !== "none"}
+              groupIndex={index}
+            />
+          ))}
+        </div>
       )}
 
-      {/* Toast */}
       {toast && <div className="lib-toast">{toast}</div>}
 
       <ConfirmDialog
@@ -369,9 +399,9 @@ function AuthenticatedLibrary() {
 
 function GroupSection({
   label,
-  screenshots,
+  items,
   selectMode,
-  selectedIds,
+  selectedKeys,
   onToggleSelect,
   onDelete,
   onOpen,
@@ -380,13 +410,13 @@ function GroupSection({
   groupIndex,
 }: {
   label: string;
-  screenshots: Screenshot[];
+  items: LibraryItem[];
   selectMode: boolean;
-  selectedIds: Set<string>;
-  onToggleSelect: (id: string, shiftKey?: boolean) => void;
-  onDelete: (id: Id<"screenshots">) => void;
-  onOpen: (s: Screenshot) => void;
-  onCopyLink: (s: Screenshot) => void;
+  selectedKeys: Set<string>;
+  onToggleSelect: (item: LibraryItem, shiftKey?: boolean) => void;
+  onDelete: (item: LibraryItem) => void;
+  onOpen: (item: LibraryItem) => void;
+  onCopyLink: (item: LibraryItem) => void;
   showLabel: boolean;
   groupIndex: number;
 }) {
@@ -401,24 +431,24 @@ function GroupSection({
       {showLabel && (
         <div
           className={`lib-group-header${collapsed ? " collapsed" : ""}`}
-          onClick={() => setCollapsed((p) => !p)}
+          onClick={() => setCollapsed((open) => !open)}
         >
           <span className="lib-group-chevron">{collapsed ? "▶" : "▼"}</span>
-          {label} ({screenshots.length})
+          {label} ({items.length})
         </div>
       )}
       {!collapsed && (
         <div className="lib-grid">
-          {screenshots.map((s) => (
-            <ScreenshotCard
-              key={s._id}
-              screenshot={s}
+          {items.map((item) => (
+            <LibraryCard
+              key={getItemKey(item)}
+              item={item}
               selectMode={selectMode}
-              selected={selectedIds.has(s._id)}
-              onToggleSelect={(shiftKey) => onToggleSelect(s._id, shiftKey)}
-              onDelete={() => onDelete(s._id)}
-              onOpen={() => onOpen(s)}
-              onCopyLink={() => onCopyLink(s)}
+              selected={selectedKeys.has(getItemKey(item))}
+              onToggleSelect={(shiftKey) => onToggleSelect(item, shiftKey)}
+              onDelete={() => onDelete(item)}
+              onOpen={() => onOpen(item)}
+              onCopyLink={() => onCopyLink(item)}
             />
           ))}
         </div>
@@ -427,8 +457,8 @@ function GroupSection({
   );
 }
 
-function ScreenshotCard({
-  screenshot,
+function LibraryCard({
+  item,
   selectMode,
   selected,
   onToggleSelect,
@@ -436,7 +466,7 @@ function ScreenshotCard({
   onOpen,
   onCopyLink,
 }: {
-  screenshot: Screenshot;
+  item: LibraryItem;
   selectMode: boolean;
   selected: boolean;
   onToggleSelect: (shiftKey?: boolean) => void;
@@ -444,51 +474,55 @@ function ScreenshotCard({
   onOpen: () => void;
   onCopyLink: () => void;
 }) {
-  const isVideo = screenshot.mimeType.startsWith("video/");
-  const typeLabel = screenshot.type.replace("-", " ").toUpperCase();
+  const isVideo = item.kind === "screenshot" && item.mimeType.startsWith("video/");
+  const typeLabel =
+    item.kind === "slideshow"
+      ? "SLIDESHOW"
+      : item.type.replace("-", " ").toUpperCase();
 
   return (
     <div
       className={`lib-card${selectMode ? " selectable" : ""}${selected ? " selected" : ""}`}
-      onClick={(e) => {
-        if (selectMode) onToggleSelect(e.shiftKey);
+      onClick={(event) => {
+        if (selectMode) onToggleSelect(event.shiftKey);
         else onOpen();
       }}
     >
       {selectMode && <div className="lib-card-checkbox">✓</div>}
       <div className="lib-card-image">
         {isVideo ? (
-          <video
-            className="lib-card-preview"
-            src={screenshot.publicUrl}
-            muted
-          />
+          <video className="lib-card-preview" src={item.publicUrl} muted />
         ) : (
-          <img
-            className="lib-card-preview"
-            src={screenshot.publicUrl}
-            alt={screenshot.filename}
-          />
+          <img className="lib-card-preview" src={item.publicUrl} alt={item.filename} />
         )}
       </div>
       <div className="lib-card-body">
         <div className="lib-card-title">
-          {screenshot.title ?? screenshot.filename}
+          {item.title ?? item.filename}
           <span
-            className={`lib-type-badge ${isVideo ? "badge-video" : "badge-screenshot"}`}
+            className={`lib-type-badge ${
+              item.kind === "slideshow"
+                ? "badge-slideshow"
+                : isVideo
+                  ? "badge-video"
+                  : "badge-screenshot"
+            }`}
           >
             {typeLabel}
           </span>
         </div>
         <div className="lib-card-meta">
-          {formatDate(screenshot.createdAt)} •{" "}
-          {formatFileSize(screenshot.fileSize)} • {screenshot.viewCount} viewer{screenshot.viewCount !== 1 ? "s" : ""}
+          {formatDate(item.createdAt)} •{" "}
+          {item.kind === "slideshow"
+            ? `${item.frameCount} frame${item.frameCount !== 1 ? "s" : ""}`
+            : formatFileSize(item.fileSize)}{" "}
+          • {item.viewCount} viewer{item.viewCount !== 1 ? "s" : ""}
         </div>
         <div className="lib-card-actions">
           <button
             className="lib-btn lib-btn-sm lib-btn-primary"
-            onClick={(e) => {
-              e.stopPropagation();
+            onClick={(event) => {
+              event.stopPropagation();
               onCopyLink();
             }}
           >
@@ -496,8 +530,8 @@ function ScreenshotCard({
           </button>
           <button
             className="lib-btn lib-btn-sm lib-btn-danger"
-            onClick={(e) => {
-              e.stopPropagation();
+            onClick={(event) => {
+              event.stopPropagation();
               onDelete();
             }}
           >
@@ -508,8 +542,6 @@ function ScreenshotCard({
     </div>
   );
 }
-
-/* ── Helpers ────────────────────────────────────────────── */
 
 function formatDate(timestamp: number) {
   const diff = Date.now() - timestamp;
@@ -525,9 +557,9 @@ function formatDate(timestamp: number) {
 }
 
 function formatFileSize(bytes: number) {
-  if (bytes < 1024) return bytes + " B";
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
-  return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function extractDomain(url: string) {
@@ -540,68 +572,66 @@ function extractDomain(url: string) {
 
 interface GroupResult {
   label: string;
-  items: Screenshot[];
+  items: LibraryItem[];
 }
 
-function groupScreenshots(
-  screenshots: Screenshot[],
+function groupLibraryItems(
+  items: LibraryItem[],
   grouping: "none" | "date" | "domain"
 ): GroupResult[] {
   if (grouping === "none") {
-    return [{ label: "All", items: screenshots }];
+    return [{ label: "All", items }];
   }
 
-  const groups: Record<string, Screenshot[]> = {};
+  const groups: Record<string, LibraryItem[]> = {};
 
   if (grouping === "date") {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    for (const s of screenshots) {
-      const d = new Date(s.createdAt);
-      d.setHours(0, 0, 0, 0);
-      const diffDays = Math.floor(
-        (today.getTime() - d.getTime()) / 86400000
-      );
+    for (const item of items) {
+      const date = new Date(item.createdAt);
+      date.setHours(0, 0, 0, 0);
+      const diffDays = Math.floor((today.getTime() - date.getTime()) / 86400000);
 
       let key: string;
       if (diffDays === 0) key = "Today";
       else if (diffDays === 1) key = "Yesterday";
       else if (diffDays < 7) key = "This Week";
       else if (diffDays < 30) key = "This Month";
-      else
-        key = d.toLocaleDateString("en-US", {
+      else {
+        key = date.toLocaleDateString("en-US", {
           year: "numeric",
           month: "long",
         });
+      }
 
-      (groups[key] ??= []).push(s);
+      (groups[key] ??= []).push(item);
     }
 
     const order = ["Today", "Yesterday", "This Week", "This Month"];
     return Object.entries(groups)
       .sort(([a], [b]) => {
-        const ai = order.indexOf(a);
-        const bi = order.indexOf(b);
-        if (ai !== -1 && bi !== -1) return ai - bi;
-        if (ai !== -1) return -1;
-        if (bi !== -1) return 1;
+        const aIndex = order.indexOf(a);
+        const bIndex = order.indexOf(b);
+        if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+        if (aIndex !== -1) return -1;
+        if (bIndex !== -1) return 1;
         return b.localeCompare(a);
       })
-      .map(([label, items]) => ({ label, items }));
+      .map(([label, groupItems]) => ({ label, items: groupItems }));
   }
 
-  // domain
-  for (const s of screenshots) {
-    const domain = s.sourceUrl ? extractDomain(s.sourceUrl) : "Unknown";
-    (groups[domain] ??= []).push(s);
+  for (const item of items) {
+    const domain = item.sourceUrl ? extractDomain(item.sourceUrl) : "Unknown";
+    (groups[domain] ??= []).push(item);
   }
 
   return Object.entries(groups)
     .sort(
       ([, a], [, b]) =>
-        Math.max(...b.map((s) => s.createdAt)) -
-        Math.max(...a.map((s) => s.createdAt))
+        Math.max(...b.map((item) => item.createdAt)) -
+        Math.max(...a.map((item) => item.createdAt))
     )
-    .map(([label, items]) => ({ label, items }));
+    .map(([label, groupItems]) => ({ label, items: groupItems }));
 }

@@ -2,7 +2,8 @@
 
 const DB_NAME = 'Captures';
 const STORE_NAME = 'captures';
-const DB_VERSION = 1;
+const SLIDESHOW_STORE_NAME = 'slideshowSessions';
+const DB_VERSION = 2;
 const TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 let dbPromise = null;
@@ -21,6 +22,11 @@ function openDB() {
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
         store.createIndex('timestamp', 'timestamp', { unique: false });
+      }
+
+      if (!db.objectStoreNames.contains(SLIDESHOW_STORE_NAME)) {
+        const slideshowStore = db.createObjectStore(SLIDESHOW_STORE_NAME, { keyPath: 'id' });
+        slideshowStore.createIndex('updatedAt', 'updatedAt', { unique: false });
       }
     };
   });
@@ -69,6 +75,42 @@ export async function deleteCapture(id) {
   const transaction = db.transaction([STORE_NAME], 'readwrite');
   const store = transaction.objectStore(STORE_NAME);
   
+  return new Promise((resolve, reject) => {
+    const request = store.delete(id);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function saveSlideshowSession(session) {
+  const db = await openDB();
+  const transaction = db.transaction([SLIDESHOW_STORE_NAME], 'readwrite');
+  const store = transaction.objectStore(SLIDESHOW_STORE_NAME);
+
+  return new Promise((resolve, reject) => {
+    const request = store.put(session);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function getSlideshowSession(id) {
+  const db = await openDB();
+  const transaction = db.transaction([SLIDESHOW_STORE_NAME], 'readonly');
+  const store = transaction.objectStore(SLIDESHOW_STORE_NAME);
+
+  return new Promise((resolve, reject) => {
+    const request = store.get(id);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function deleteSlideshowSession(id) {
+  const db = await openDB();
+  const transaction = db.transaction([SLIDESHOW_STORE_NAME], 'readwrite');
+  const store = transaction.objectStore(SLIDESHOW_STORE_NAME);
+
   return new Promise((resolve, reject) => {
     const request = store.delete(id);
     request.onsuccess = () => resolve();

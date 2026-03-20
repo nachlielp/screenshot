@@ -10,4 +10,10 @@ crons.daily(
   internal.screenshots.cleanupExpired
 );
 
+crons.daily(
+  "cleanup expired slideshows",
+  { hourUTC: 2, minuteUTC: 15 },
+  internal.slideshows.cleanupExpired
+);
+
 export default crons;

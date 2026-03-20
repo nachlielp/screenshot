@@ -37,6 +37,10 @@
             box-shadow: 0 10px 24px rgba(26, 26, 26, 0.08);
         }
 
+        [hidden] {
+            display: none !important;
+        }
+
         .tile-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -92,6 +96,63 @@
             flex-direction: column;
             gap: 10px;
             margin-top: 10px;
+        }
+
+        .mode-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .mode-title {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .mode-title strong {
+            font-size: 18px;
+        }
+
+        .mode-title span {
+            color: #6f7787;
+            font-size: 13px;
+            line-height: 1.35;
+        }
+
+        .mode-pill {
+            min-width: 116px;
+            padding: 10px 12px;
+            border-radius: 18px;
+            background: linear-gradient(180deg, #fff9e8 0%, #fff1c2 100%);
+            border: 1px solid rgba(255, 193, 7, 0.42);
+            color: #7a5400;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            align-items: flex-start;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+        }
+
+        .mode-pill-label {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            opacity: 0.75;
+        }
+
+        .mode-pill-value {
+            font-size: 18px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .mode-pill-note {
+            font-size: 11px;
+            line-height: 1.2;
+            opacity: 0.82;
         }
 
         .action-row {
@@ -154,6 +215,20 @@
             opacity: 1;
         }
 
+        .add-frame-badge {
+            min-width: 1.6ch;
+            font-size: 28px;
+            font-weight: 700;
+            line-height: 1;
+            color: #5a8ef6;
+            opacity: 0.72;
+        }
+
+        .action-row:hover .add-frame-badge {
+            opacity: 1;
+            transform: scale(1.05);
+        }
+
         .footer {
             display: flex;
             flex-direction: column;
@@ -214,18 +289,17 @@
 </head>
 <body>
     <div class="shell">
-        <div class="panel">
+        <div class="panel" id="homePanel">
             <div class="tile-grid">
-                <button class="tile" id="visiblePartBtn" type="button">
+                <button class="tile" id="slideshowBtn" type="button">
                     <span class="tile-icon">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <rect x="3" y="5" width="18" height="14" rx="2"></rect>
-                            <path d="M3 9h18"></path>
-                            <path d="M8 7h.01"></path>
-                            <path d="M12 7h.01"></path>
+                            <rect x="4" y="5" width="10" height="14" rx="2"></rect>
+                            <rect x="10" y="5" width="10" height="14" rx="2"></rect>
+                            <path d="M10 9h10"></path>
                         </svg>
                     </span>
-                    <span class="tile-title">Tab</span>
+                    <span class="tile-title">Slideshow</span>
                 </button>
 
                 <button class="tile" id="tabWithLogsBtn" type="button">
@@ -292,6 +366,57 @@
                         </svg>
                     </span>
                     <span class="row-label">Annotate Local &amp; Clipboard Image</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="panel" id="slideshowPanel" hidden>
+            <div class="mode-header">
+                <div class="mode-title">
+                    <strong>Slideshow Mode</strong>
+                    <span id="slideshowFrameHint">Capture frames one after another, then finish to annotate and upload.</span>
+                </div>
+                <div class="mode-pill">
+                    <span class="mode-pill-label">Frames</span>
+                    <span class="mode-pill-value" id="slideshowFrameCount">0</span>
+                    <span class="mode-pill-note" id="slideshowFrameState">Ready to start</span>
+                </div>
+            </div>
+
+            <div class="action-list">
+                <button class="action-row" id="slideshowTabBtn" type="button">
+                    <span class="row-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="3" y="5" width="18" height="14" rx="2"></rect>
+                            <path d="M3 9h18"></path>
+                            <path d="M8 7h.01"></path>
+                            <path d="M12 7h.01"></path>
+                        </svg>
+                    </span>
+                    <span class="row-label">Tab</span>
+                    <span class="delay-pill add-frame-badge">+</span>
+                </button>
+
+                <button class="action-row" id="slideshowScreenshotBtn" type="button">
+                    <span class="row-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="3" y="4" width="18" height="14" rx="3"></rect>
+                            <path d="M8 20h8"></path>
+                            <path d="M12 18v2"></path>
+                        </svg>
+                    </span>
+                    <span class="row-label">Screenshot</span>
+                    <span class="delay-pill add-frame-badge">+</span>
+                </button>
+
+                <button class="action-row" id="slideshowFinishBtn" type="button">
+                    <span class="row-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M5 12l4 4L19 6"></path>
+                        </svg>
+                    </span>
+                    <span class="row-label">Finish</span>
+                    <span class="delay-pill">→</span>
                 </button>
             </div>
         </div>

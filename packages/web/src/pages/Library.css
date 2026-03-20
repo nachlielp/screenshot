@@ -404,6 +404,11 @@
   color: #842029;
 }
 
+.badge-slideshow {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
 .lib-card-meta {
   font-size: 12px;
   color: #666;
