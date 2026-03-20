@@ -8,6 +8,38 @@ function compactObject(obj) {
   );
 }
 
+function decodeJwtPayload(token) {
+  try {
+    const parts = token?.split(".");
+    if (parts?.length !== 3) {
+      return null;
+    }
+
+    return JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+  } catch {
+    return null;
+  }
+}
+
+async function getFriendlyConvexAuthError(status, errorBody, token) {
+  if (status !== 401 || !errorBody.includes('"code":"NoAuthProvider"')) {
+    return null;
+  }
+
+  const payload = decodeJwtPayload(token);
+  const { convexUrl } = await getRuntimeConfig();
+  const issuer = payload?.iss || "unknown";
+
+  return [
+    "Convex rejected the Clerk token because the deployment is configured for a different auth provider.",
+    `Token issuer: ${issuer}`,
+    `Convex deployment: ${convexUrl}`,
+    "Update the active Convex deployment to trust this Clerk issuer, for example:",
+    `npx convex env set CLERK_ISSUER ${issuer}`,
+    "Then restart `npx convex dev` so the auth config reloads.",
+  ].join(" ");
+}
+
 function getUploadArgs(storageId, consoleLogsStorageId, networkLogsStorageId, filename, mimeType, blob, type, metadata, deviceMeta) {
   return compactObject({
     storageId,
@@ -150,7 +182,10 @@ export async function uploadToConvex(blob, filename, mimeType, type, metadata = 
     if (!userResponse.ok) {
       const errorBody = await userResponse.text();
       console.error('Convex mutation failed:', userResponse.status, errorBody);
-      throw new Error(`Failed to create/get user in Convex: ${userResponse.status} - ${errorBody}`);
+      const friendlyError = await getFriendlyConvexAuthError(userResponse.status, errorBody, token);
+      throw new Error(
+        friendlyError || `Failed to create/get user in Convex: ${userResponse.status} - ${errorBody}`
+      );
     }
 
     // Step 2: Generate upload URL for main file

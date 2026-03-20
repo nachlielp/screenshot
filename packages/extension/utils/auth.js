@@ -4,7 +4,6 @@ import { getRuntimeConfig } from "./runtime-config.js";
 
 // Storage key for user data
 const LEGACY_AUTH_STORAGE_KEY = 'clerk_auth';
-const PROD_SITE_URL = 'https://snap.nachli.com';
 let currentUser = null;
 let authListeners = [];
 
@@ -273,12 +272,13 @@ export async function signIn() {
 
 export async function signInWithGoogle() {
   try {
+    const config = await getRuntimeConfig();
     await chrome.tabs.create({ 
-      url: PROD_SITE_URL,
+      url: config.siteUrl,
       active: true 
     });
     
-    console.log('Opened the production web app for sign-in.');
+    console.log(`Opened the ${config.environment} web app for sign-in.`);
     
     // Store the timestamp so we know when sign-in was initiated
     await chrome.storage.local.set({ 
