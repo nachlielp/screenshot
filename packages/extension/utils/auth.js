@@ -227,11 +227,12 @@ async function getConvexToken(sessionId) {
     
     console.log('Available cookies for token fetch:', uniqueCookies.map(c => `${c.name} (${c.domain})`));
     
-    // Find the __clerk_db_jwt - needed for dev instance authentication
+    // Find the __clerk_db_jwt when available. If it is missing, callers can
+    // fall back to the Clerk client API flow instead of treating it as fatal.
     const clerkDbJwt = await pickCookie(uniqueCookies, '__clerk_db_jwt');
     
     if (!clerkDbJwt) {
-      console.error('No __clerk_db_jwt cookie found - cannot authenticate with Clerk dev instance');
+      console.warn('No __clerk_db_jwt cookie found. Falling back to the Clerk client API token flow.');
       return null;
     }
     

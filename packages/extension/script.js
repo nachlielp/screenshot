@@ -16,6 +16,7 @@ const userName = document.getElementById("userName");
 const userEmail = document.getElementById("userEmail");
 
 const DELAY_MS = 3000;
+const POPUP_HIDE_SETTLE_MS = 75;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -81,8 +82,66 @@ const chooseDesktopMedia = () => (
     })
 );
 
+const hidePopupForCapture = () => {
+    const htmlStyle = document.documentElement.getAttribute('style');
+    const bodyStyle = document.body.getAttribute('style');
+    const childVisibility = Array.from(document.body.children).map((element) => ({
+        element,
+        visibility: element.style.visibility,
+    }));
+
+    document.documentElement.style.setProperty('width', '1px', 'important');
+    document.documentElement.style.setProperty('height', '1px', 'important');
+    document.documentElement.style.setProperty('min-width', '1px', 'important');
+    document.documentElement.style.setProperty('min-height', '1px', 'important');
+    document.documentElement.style.setProperty('overflow', 'hidden', 'important');
+    document.documentElement.style.setProperty('opacity', '0', 'important');
+    document.documentElement.style.setProperty('background', 'transparent', 'important');
+    document.documentElement.style.setProperty('pointer-events', 'none', 'important');
+
+    document.body.style.setProperty('width', '1px', 'important');
+    document.body.style.setProperty('height', '1px', 'important');
+    document.body.style.setProperty('min-width', '1px', 'important');
+    document.body.style.setProperty('min-height', '1px', 'important');
+    document.body.style.setProperty('margin', '0', 'important');
+    document.body.style.setProperty('overflow', 'hidden', 'important');
+    document.body.style.setProperty('opacity', '0', 'important');
+    document.body.style.setProperty('background', 'transparent', 'important');
+    document.body.style.setProperty('pointer-events', 'none', 'important');
+
+    childVisibility.forEach(({ element }) => {
+        element.style.visibility = 'hidden';
+    });
+
+    try {
+        window.resizeTo(1, 1);
+    } catch (error) {
+        console.debug('Popup resize is not available:', error);
+    }
+
+    return () => {
+        if (htmlStyle === null) {
+            document.documentElement.removeAttribute('style');
+        } else {
+            document.documentElement.setAttribute('style', htmlStyle);
+        }
+
+        if (bodyStyle === null) {
+            document.body.removeAttribute('style');
+        } else {
+            document.body.setAttribute('style', bodyStyle);
+        }
+
+        childVisibility.forEach(({ element, visibility }) => {
+            element.style.visibility = visibility;
+        });
+    };
+};
+
 const captureDisplayScreenshot = async () => {
     const streamId = await chooseDesktopMedia();
+    const restorePopup = hidePopupForCapture();
+    await sleep(POPUP_HIDE_SETTLE_MS);
     const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: {
@@ -146,6 +205,9 @@ const captureDisplayScreenshot = async () => {
 
         const editorUrl = chrome.runtime.getURL(`editor.html?id=${captureId}`);
         await chrome.tabs.create({ url: editorUrl });
+    } catch (error) {
+        restorePopup();
+        throw error;
     } finally {
         stream.getTracks().forEach((track) => track.stop());
     }
