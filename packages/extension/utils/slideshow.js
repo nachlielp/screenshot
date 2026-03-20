@@ -67,6 +67,20 @@ export async function getActiveSlideshowSession() {
   return session;
 }
 
+export async function getActiveCapturingSlideshowSession() {
+  const session = await getActiveSlideshowSession();
+  if (!session) {
+    return null;
+  }
+
+  return session.state === 'capturing' ? session : null;
+}
+
+export async function hasActiveCapturingSlideshowSession() {
+  const session = await getActiveCapturingSlideshowSession();
+  return Boolean(session);
+}
+
 export async function ensureActiveSlideshowSession() {
   const existing = await getActiveSlideshowSession();
   if (existing) {

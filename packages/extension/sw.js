@@ -1,8 +1,110 @@
 import { saveCapture, cleanupExpiredCaptures } from './utils/db.js';
-import { appendFrameToSlideshowSession } from './utils/slideshow.js';
+import {
+    appendFrameToSlideshowSession,
+    hasActiveCapturingSlideshowSession,
+} from './utils/slideshow.js';
 
 // Clean up expired captures on service worker startup
 cleanupExpiredCaptures().catch(console.error);
+
+const DEFAULT_ACTION_ICON = {
+    16: "icons/not-recording.png",
+    32: "icons/not-recording.png",
+};
+
+const RECORDING_ACTION_ICON = {
+    16: "icons/recording.png",
+    32: "icons/recording.png",
+};
+
+const SLIDESHOW_BADGE_COLORS = ["#2563eb", "#f59e0b"];
+const SLIDESHOW_BADGE_TEXT = ["SL", "+"];
+const SLIDESHOW_PULSE_INTERVAL_MS = 900;
+
+let slideshowPulseIntervalId = null;
+let slideshowPulseStep = 0;
+
+const stopSlideshowPulse = () => {
+    if (slideshowPulseIntervalId !== null) {
+        clearInterval(slideshowPulseIntervalId);
+        slideshowPulseIntervalId = null;
+    }
+    slideshowPulseStep = 0;
+};
+
+const applyIdleActionIndicator = async () => {
+    stopSlideshowPulse();
+    await chrome.action.setIcon({ path: DEFAULT_ACTION_ICON });
+    await chrome.action.setBadgeText({ text: "" });
+    await chrome.action.setTitle({ title: "Screenshot" });
+};
+
+const applyRecordingActionIndicator = async () => {
+    stopSlideshowPulse();
+    await chrome.action.setIcon({ path: RECORDING_ACTION_ICON });
+    await chrome.action.setBadgeText({ text: "" });
+    await chrome.action.setTitle({ title: "Recording in progress" });
+};
+
+const applySlideshowPulseFrame = async () => {
+    const text = SLIDESHOW_BADGE_TEXT[slideshowPulseStep % SLIDESHOW_BADGE_TEXT.length];
+    const color = SLIDESHOW_BADGE_COLORS[slideshowPulseStep % SLIDESHOW_BADGE_COLORS.length];
+    slideshowPulseStep += 1;
+
+    await chrome.action.setIcon({ path: DEFAULT_ACTION_ICON });
+    await chrome.action.setBadgeBackgroundColor({ color });
+    await chrome.action.setBadgeText({ text });
+    await chrome.action.setTitle({ title: "Slideshow capture in progress" });
+};
+
+const applySlideshowActionIndicator = async () => {
+    await applySlideshowPulseFrame();
+
+    if (slideshowPulseIntervalId !== null) {
+        return;
+    }
+
+    slideshowPulseIntervalId = setInterval(() => {
+        applySlideshowPulseFrame().catch((error) => {
+            console.warn("Failed to update slideshow action pulse:", error);
+        });
+    }, SLIDESHOW_PULSE_INTERVAL_MS);
+};
+
+const refreshActionIndicator = async () => {
+    const { recording } = await chrome.storage.local.get(["recording"]);
+
+    if (recording) {
+        await applyRecordingActionIndicator();
+        return;
+    }
+
+    const hasActiveSlideshow = await hasActiveCapturingSlideshowSession();
+    if (hasActiveSlideshow) {
+        await applySlideshowActionIndicator();
+        return;
+    }
+
+    await applyIdleActionIndicator();
+};
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== "local") {
+        return;
+    }
+
+    if (!changes.activeSlideshowSessionId && !changes.recording && !changes.type) {
+        return;
+    }
+
+    refreshActionIndicator().catch((error) => {
+        console.warn("Failed to refresh action indicator after storage change:", error);
+    });
+});
+
+refreshActionIndicator().catch((error) => {
+    console.warn("Failed to initialize action indicator:", error);
+});
 
 /**
  * Utility function: Get the active tab
@@ -32,9 +134,10 @@ const getActiveTab = async () => {
  * @param {boolean} state - The current recording state (true for active, false for inactive)
  * @param {string} type - The type of recording (e.g., 'tab', 'screen', or '')
  */
-const updateRecordingStatus = (state, type) => {
+const updateRecordingStatus = async (state, type) => {
     console.log("Updating recording status:", { state, type });
-    chrome.storage.local.set({ recording: state, type });
+    await chrome.storage.local.set({ recording: state, type });
+    await refreshActionIndicator();
 };
 
 /**
@@ -164,8 +267,7 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
  */
 const startRecording = async (type) => {
     console.log("Starting recording:", type);
-    updateRecordingStatus(true, type);
-    chrome.action.setIcon({ path: "icons/recording.png" });
+    await updateRecordingStatus(true, type);
 
     if (type === "tab") {
         await handleTabRecording(true);
@@ -180,8 +282,7 @@ const startRecording = async (type) => {
 // Stop recording and clean up resources
 const stopRecording = async () => {
     console.log("Stopping recording");
-    updateRecordingStatus(false, "");
-    chrome.action.setIcon({ path: "icons/not-recording.png" });
+    await updateRecordingStatus(false, "");
     await handleTabRecording(false);
     await endTabCapture();
 };
