@@ -16,7 +16,7 @@ import {
 } from './utils/slideshow.js';
 
 const slideshowBtn = document.getElementById("slideshowBtn");
-const tabWithLogsBtn = document.getElementById("tabWithLogsBtn");
+const tabBtn = document.getElementById("tabBtn");
 const fullPageBtn = document.getElementById("fullPageBtn");
 const delayedTabBtn = document.getElementById("delayedTabBtn");
 const screenWindowBtn = document.getElementById("screenWindowBtn");
@@ -375,7 +375,7 @@ const initializePopup = async () => {
       window.close();
     });
 
-    tabWithLogsBtn?.addEventListener("click", async () => {
+    tabBtn?.addEventListener("click", async () => {
       await takeTabScreenshot({ includeLogs: true, fullPage: false });
       window.close();
     });
@@ -388,7 +388,7 @@ const initializePopup = async () => {
     delayedTabBtn?.addEventListener("click", async () => {
       try {
         await runCountdown(delayedTabBtn, DELAY_MS / 1000);
-        await takeTabScreenshot({ includeLogs: false, fullPage: false });
+        await takeTabScreenshot({ includeLogs: true, fullPage: false });
         window.close();
       } catch (error) {
         console.error("Delayed tab capture failed:", error);

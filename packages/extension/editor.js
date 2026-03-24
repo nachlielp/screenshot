@@ -387,6 +387,74 @@ function cancelText() {
   textInputActive = false;
 }
 
+function isInspectableUrl(url) {
+  return typeof url === 'string' &&
+    (url.startsWith('http://') || url.startsWith('https://')) &&
+    !url.startsWith('chrome://') &&
+    !url.startsWith('chrome-extension://');
+}
+
+async function findSourceTab(sourceUrl) {
+  if (isInspectableUrl(sourceUrl)) {
+    const tabs = await chrome.tabs.query({});
+    const matchingTab = tabs.find((tab) => tab.url === sourceUrl && isInspectableUrl(tab.url));
+    if (matchingTab) {
+      return matchingTab;
+    }
+  }
+
+  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (activeTab && isInspectableUrl(activeTab.url)) {
+    return activeTab;
+  }
+
+  return null;
+}
+
+async function collectLogsAndNetwork(sourceUrl) {
+  const sourceTab = await findSourceTab(sourceUrl);
+  if (!sourceTab?.id) {
+    return null;
+  }
+
+  await chrome.scripting.executeScript({
+    target: { tabId: sourceTab.id },
+    files: ['content.js'],
+  }).catch(() => {});
+
+  const logsResponse = await chrome.tabs.sendMessage(sourceTab.id, { type: 'extract-console-network' });
+  return {
+    sourceUrl: sourceTab.url || sourceUrl || null,
+    consoleLogs: logsResponse?.consoleLogs?.length ? logsResponse.consoleLogs : null,
+    networkLogs: logsResponse?.networkLogs?.length ? logsResponse.networkLogs : null,
+    deviceMeta: logsResponse?.deviceMeta || null,
+  };
+}
+
+function setUploadButtonsState({ busy, activeButtonId = null }) {
+  ['done-btn', 'upload-with-logs-btn'].forEach((buttonId) => {
+    const button = document.getElementById(buttonId);
+    if (!button) return;
+
+    button.disabled = busy;
+
+    if (!busy) {
+      if (button.dataset.defaultHtml) {
+        button.innerHTML = button.dataset.defaultHtml;
+      }
+      return;
+    }
+
+    if (!button.dataset.defaultHtml) {
+      button.dataset.defaultHtml = button.innerHTML;
+    }
+
+    if (buttonId === activeButtonId) {
+      button.innerHTML = '<span class="spinner"></span><span>Uploading...</span>';
+    }
+  });
+}
+
 // Copy to clipboard
 async function copyToClipboard() {
   try {
@@ -408,12 +476,11 @@ async function copyToClipboard() {
   }
 }
 
-// Done - save, upload, and navigate to snapshot-inspector
-async function finishEditing() {
+// Save, upload, and navigate to the shared preview.
+async function finishEditing({ includeLogs = false } = {}) {
   const urlParams = new URLSearchParams(window.location.search);
   const captureId = urlParams.get('id');
-  const doneBtn = document.getElementById('done-btn');
-  const originalBtnHtml = doneBtn.innerHTML;
+  const activeButtonId = includeLogs ? 'upload-with-logs-btn' : 'done-btn';
 
   try {
     // Convert canvas to blob
@@ -421,6 +488,32 @@ async function finishEditing() {
 
     // Get existing capture to preserve other data
     const existingCapture = await getCapture(captureId);
+    if (!existingCapture) {
+      throw new Error('Screenshot not found');
+    }
+
+    const storedConsoleLogs = existingCapture.consoleLogs || null;
+    const storedNetworkLogs = existingCapture.networkLogs || null;
+    let consoleLogs = storedConsoleLogs;
+    let networkLogs = storedNetworkLogs;
+    let sourceUrl = existingCapture.sourceUrl || null;
+    let deviceMeta = existingCapture.deviceMeta || null;
+
+    if (includeLogs) {
+      try {
+        const refreshedLogs = await collectLogsAndNetwork(sourceUrl);
+        if (refreshedLogs) {
+          consoleLogs = refreshedLogs.consoleLogs ?? consoleLogs;
+          networkLogs = refreshedLogs.networkLogs ?? networkLogs;
+          sourceUrl = refreshedLogs.sourceUrl ?? sourceUrl;
+          deviceMeta = refreshedLogs.deviceMeta ?? deviceMeta;
+        } else {
+          console.warn('No eligible browser tab found for logs and network collection.');
+        }
+      } catch (logError) {
+        console.warn('Failed to refresh logs and network data before upload:', logError);
+      }
+    }
     
     // Save to IndexedDB first (fallback safety)
     await saveCapture(
@@ -428,10 +521,10 @@ async function finishEditing() {
       blob,
       existingCapture.filename,
       'image/png',
-      existingCapture.consoleLogs,
-      existingCapture.networkLogs,
-      existingCapture.sourceUrl,
-      existingCapture.deviceMeta
+      consoleLogs,
+      networkLogs,
+      sourceUrl,
+      deviceMeta
     );
 
     // Check if user is authenticated
@@ -442,9 +535,8 @@ async function finishEditing() {
       return;
     }
 
-    // Disable button and show uploading state
-    doneBtn.disabled = true;
-    doneBtn.innerHTML = '<span class="spinner"></span><span>Uploading...</span>';
+    // Disable upload controls and show uploading state.
+    setUploadButtonsState({ busy: true, activeButtonId });
 
     // Determine capture type
     let captureType = 'screenshot';
@@ -452,16 +544,19 @@ async function finishEditing() {
       captureType = existingCapture.filename.includes('screen') ? 'screen-recording' : 'tab-recording';
     }
 
+    const uploadConsoleLogs = includeLogs ? consoleLogs : null;
+    const uploadNetworkLogs = includeLogs ? networkLogs : null;
+
     // Upload to Convex
     const result = await uploadToConvex(
       blob,
       existingCapture.filename,
       'image/png',
       captureType,
-      { sourceUrl: existingCapture.sourceUrl || undefined },
-      existingCapture.consoleLogs || null,
-      existingCapture.networkLogs || null,
-      existingCapture.deviceMeta || null
+      { sourceUrl: sourceUrl || undefined },
+      uploadConsoleLogs,
+      uploadNetworkLogs,
+      deviceMeta
     );
 
     // Build web app preview link
@@ -490,9 +585,7 @@ async function finishEditing() {
 
   } catch (error) {
     console.error('Failed to save/upload edited screenshot:', error);
-    // Restore button
-    doneBtn.disabled = false;
-    doneBtn.innerHTML = originalBtnHtml;
+    setUploadButtonsState({ busy: false });
     
     // Try to fallback to video.html preview if we saved locally
     const fallbackUrl = `video.html?id=${captureId}`;
@@ -577,7 +670,8 @@ document.getElementById('rectangle-btn').addEventListener('click', () => selectT
 document.getElementById('arrow-btn').addEventListener('click', () => selectTool('arrow'));
 document.getElementById('text-btn').addEventListener('click', () => selectTool('text'));
 document.getElementById('copy-btn').addEventListener('click', copyToClipboard);
-document.getElementById('done-btn').addEventListener('click', finishEditing);
+document.getElementById('done-btn').addEventListener('click', () => finishEditing());
+document.getElementById('upload-with-logs-btn').addEventListener('click', () => finishEditing({ includeLogs: true }));
 
 // Color picker
 document.querySelectorAll('.color-btn').forEach(btn => {

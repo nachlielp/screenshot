@@ -42,8 +42,10 @@
       border-radius: 12px;
       padding: 8px 12px;
       display: flex;
+      flex-wrap: wrap;
       gap: 4px;
       align-items: center;
+      justify-content: center;
     }
 
     .tool-btn {
@@ -160,6 +162,16 @@
 
     #done-btn:hover {
       background: #FFD54F;
+    }
+
+    #upload-with-logs-btn {
+      background: #fff7db;
+      color: #5b4300;
+      font-weight: 600;
+    }
+
+    #upload-with-logs-btn:hover {
+      background: #ffefb3;
     }
 
     .spinner {
@@ -366,9 +378,13 @@
         <span>📋</span>
         <span>Copy</span>
       </button>
-      <button class="tool-btn" id="done-btn" title="Done editing">
+      <button class="tool-btn" id="done-btn" title="Upload screenshot">
         <span>✓</span>
-        <span>Done</span>
+        <span>Upload</span>
+      </button>
+      <button class="tool-btn" id="upload-with-logs-btn" title="Upload screenshot with logs and network">
+        <span>⇪</span>
+        <span>Upload with logs &amp; network</span>
       </button>
     </div>
   </div>
