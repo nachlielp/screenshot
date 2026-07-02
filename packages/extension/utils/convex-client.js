@@ -97,7 +97,7 @@ export async function convexQuery(path, args, options) {
   return convexCall('query', path, args, options);
 }
 
-function getUploadArgs(storageId, consoleLogsStorageId, networkLogsStorageId, filename, mimeType, blob, type, metadata, deviceMeta) {
+function getUploadArgs(storageId, consoleLogsStorageId, networkLogsStorageId, filename, mimeType, blob, type, metadata, deviceMeta, annotations) {
   return compactObject({
     storageId,
     consoleLogsStorageId,
@@ -106,6 +106,7 @@ function getUploadArgs(storageId, consoleLogsStorageId, networkLogsStorageId, fi
     mimeType,
     fileSize: blob.size,
     type,
+    annotations,
     ...metadata,
     // Device metadata is optional and may not be accepted by older Convex deployments.
     deviceBrowser: deviceMeta?.browser,
@@ -235,7 +236,7 @@ async function createScreenshotRecord(args) {
  * @param {object} metadata - Optional metadata (width, height, duration)
  * @returns {Promise<{shareUrl: string, publicUrl: string}>}
  */
-export async function uploadToConvex(blob, filename, mimeType, type, metadata = {}, consoleLogs = null, networkLogs = null, deviceMeta = null) {
+export async function uploadToConvex(blob, filename, mimeType, type, metadata = {}, consoleLogs = null, networkLogs = null, deviceMeta = null, annotations = null) {
   try {
     const { user } = await getAuthenticatedConvexContext();
     console.log('Uploading as:', user.email);
@@ -253,7 +254,8 @@ export async function uploadToConvex(blob, filename, mimeType, type, metadata = 
       blob,
       type,
       metadata,
-      deviceMeta
+      deviceMeta,
+      annotations
     );
     const screenshotData = await createScreenshotRecord(screenshotArgs);
 

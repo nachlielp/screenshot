@@ -2,29 +2,22 @@ import { getCapture, saveCapture, deleteCapture } from './utils/db.js';
 import { uploadToConvex } from './utils/convex-client.js';
 import { getRuntimeConfig } from './utils/runtime-config.js';
 import { isAuthenticated } from './utils/auth.js';
+import { AnnotationEngine, parseAnnotations } from './shared/annotation-engine.js';
 
 // Editor state
-let canvas, ctx;
-let originalImage = null;
-let currentTool = null;
-let currentColor = '#ef4444';
-let currentThickness = 7;
-let currentFontSize = 20;
-let isDrawing = false;
-let startX, startY;
-let tempCanvas, tempCtx;
-
-// History management
-let history = [];
-let historyIndex = -1;
-const MAX_HISTORY = 50;
-
-// Crop selection
-let cropSelection = null;
-
-// Text input
-let textInputActive = false;
+let engine = null;
+let activeTextRequest = null;
 let activeConfirmCleanup = null;
+
+const TOOL_BUTTONS = {
+  select: 'select-btn',
+  crop: 'crop-btn',
+  rect: 'rectangle-btn',
+  arrow: 'arrow-btn',
+  line: 'line-btn',
+  freehand: 'freehand-btn',
+  text: 'text-btn',
+};
 
 // Initialize editor
 async function init() {
@@ -43,349 +36,126 @@ async function init() {
       return;
     }
 
-    await loadImageToCanvas(capture.blob);
+    const canvas = document.getElementById('editor-canvas');
+    engine = new AnnotationEngine(canvas, {
+      enableCrop: true,
+      onSelectionChange: handleSelectionChange,
+      onHistoryChange: updateHistoryButtons,
+      onTextEditRequest: handleTextEditRequest,
+    });
+    engine.thickness = getSliderValue('thickness-slider', 7);
+    engine.fontSize = getSliderValue('font-size-slider', 20);
+
+    await engine.loadImage(capture.blob, {
+      annotations: parseAnnotations(capture.annotations),
+    });
+    engine.setTool('select');
+
     document.getElementById('loading').style.display = 'none';
     document.getElementById('toolbar-header').style.display = 'flex';
-    
-    // Save initial state
-    saveHistory();
   } catch (error) {
     console.error('Failed to load screenshot:', error);
     alert('Failed to load screenshot');
   }
 }
 
-// Load image blob to canvas
-async function loadImageToCanvas(blob) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(blob);
-
-    img.onload = () => {
-      canvas = document.getElementById('editor-canvas');
-      ctx = canvas.getContext('2d', { willReadFrequently: true });
-
-      // Set canvas size to image size
-      canvas.width = img.width;
-      canvas.height = img.height;
-
-      // Draw the image
-      ctx.drawImage(img, 0, 0);
-
-      originalImage = img;
-      URL.revokeObjectURL(url);
-
-      // Create temporary canvas for preview
-      tempCanvas = document.createElement('canvas');
-      tempCtx = tempCanvas.getContext('2d');
-
-      resolve();
-    };
-
-    img.onerror = reject;
-    img.src = url;
-  });
+function getSliderValue(id, fallback) {
+  const slider = document.getElementById(id);
+  return slider ? parseInt(slider.value, 10) : fallback;
 }
 
-// History management
-function saveHistory() {
-  // Remove any forward history
-  if (historyIndex < history.length - 1) {
-    history = history.slice(0, historyIndex + 1);
+function updateHistoryButtons({ canUndo, canRedo } = {}) {
+  document.getElementById('undo-btn').disabled = !canUndo;
+  document.getElementById('redo-btn').disabled = !canRedo;
+}
+
+function handleSelectionChange(annotation) {
+  document.getElementById('delete-btn').disabled = !annotation;
+
+  if (annotation) {
+    // Mirror the selection's style in the toolbar without touching history
+    engine.color = annotation.color;
+    engine.thickness = annotation.thickness;
+    if (annotation.fontSize) engine.fontSize = annotation.fontSize;
+
+    document.querySelectorAll('.color-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.color === annotation.color);
+    });
+    const thicknessSlider = document.getElementById('thickness-slider');
+    if (thicknessSlider) {
+      thicknessSlider.value = String(annotation.thickness);
+      document.getElementById('thickness-value').textContent = `${annotation.thickness}px`;
+    }
   }
-
-  // Save current state
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  history.push({
-    imageData,
-    width: canvas.width,
-    height: canvas.height
-  });
-
-  // Limit history size
-  if (history.length > MAX_HISTORY) {
-    history.shift();
-  } else {
-    historyIndex++;
-  }
-
-  updateHistoryButtons();
-}
-
-function undo() {
-  if (historyIndex > 0) {
-    historyIndex--;
-    restoreFromHistory();
-    updateHistoryButtons();
-  }
-}
-
-function redo() {
-  if (historyIndex < history.length - 1) {
-    historyIndex++;
-    restoreFromHistory();
-    updateHistoryButtons();
-  }
-}
-
-function restoreFromHistory() {
-  const state = history[historyIndex];
-  canvas.width = state.width;
-  canvas.height = state.height;
-  ctx.putImageData(state.imageData, 0, 0);
-}
-
-function updateHistoryButtons() {
-  document.getElementById('undo-btn').disabled = historyIndex <= 0;
-  document.getElementById('redo-btn').disabled = historyIndex >= history.length - 1;
 }
 
 // Tool selection
 function selectTool(tool) {
-  // Deactivate previous tool
-  document.querySelectorAll('.tool-btn').forEach(btn => {
-    if (!btn.id.includes('undo') && !btn.id.includes('redo') && 
-        !btn.id.includes('copy') && !btn.id.includes('done')) {
-      btn.classList.remove('active');
-    }
+  engine.setTool(tool);
+  Object.entries(TOOL_BUTTONS).forEach(([key, id]) => {
+    document.getElementById(id)?.classList.toggle('active', key === tool);
   });
-
-  if (currentTool === tool) {
-    currentTool = null;
-    canvas.style.cursor = 'default';
-  } else {
-    currentTool = tool;
-    document.getElementById(`${tool}-btn`).classList.add('active');
-    canvas.style.cursor = 'crosshair';
-  }
 }
 
-// Color selection
-function selectColor(color) {
-  currentColor = color;
-  document.querySelectorAll('.color-btn').forEach(btn => {
-    btn.classList.remove('active');
-  });
-  event.target.classList.add('active');
-}
+// ── Text input overlay ────────────────────────────────────────────────
 
-// Canvas event handlers
-function getCanvasCoordinates(e) {
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
-
-  return {
-    x: (e.clientX - rect.left) * scaleX,
-    y: (e.clientY - rect.top) * scaleY
-  };
-}
-
-function handleMouseDown(e) {
-  if (!currentTool) return;
-  
-  // If text input is already active, ignore clicks
-  if (textInputActive) return;
-
-  const coords = getCanvasCoordinates(e);
-  startX = coords.x;
-  startY = coords.y;
-  isDrawing = true;
-
-  if (currentTool === 'text') {
-    placeTextInput(e.clientX, e.clientY);
-  } else {
-    // Save current canvas state to temp for preview
-    tempCanvas.width = canvas.width;
-    tempCanvas.height = canvas.height;
-    tempCtx.drawImage(canvas, 0, 0);
-  }
-}
-
-function handleMouseMove(e) {
-  if (!isDrawing || !currentTool || currentTool === 'text') return;
-
-  const coords = getCanvasCoordinates(e);
-
-  // Restore from temp canvas
-  ctx.drawImage(tempCanvas, 0, 0);
-
-  // Draw preview
-  ctx.strokeStyle = currentColor;
-  ctx.lineWidth = currentThickness;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-
-  if (currentTool === 'crop') {
-    drawCropPreview(startX, startY, coords.x, coords.y);
-  } else if (currentTool === 'rectangle') {
-    drawRectangle(startX, startY, coords.x, coords.y);
-  } else if (currentTool === 'arrow') {
-    drawArrow(startX, startY, coords.x, coords.y);
-  }
-}
-
-function handleMouseUp(e) {
-  if (!isDrawing) return;
-  isDrawing = false;
-
-  if (!currentTool || currentTool === 'text') return;
-
-  const coords = getCanvasCoordinates(e);
-
-  if (currentTool === 'crop') {
-    executeCrop(startX, startY, coords.x, coords.y);
-  } else {
-    // Finalize the drawing
-    saveHistory();
-  }
-}
-
-// Drawing functions
-function drawRectangle(x1, y1, x2, y2) {
-  const width = x2 - x1;
-  const height = y2 - y1;
-  ctx.strokeRect(x1, y1, width, height);
-}
-
-function drawArrow(x1, y1, x2, y2) {
-  const headLength = 20;
-  const angle = Math.atan2(y2 - y1, x2 - x1);
-
-  // Draw line
-  ctx.beginPath();
-  ctx.moveTo(x1, y1);
-  ctx.lineTo(x2, y2);
-  ctx.stroke();
-
-  // Draw arrowhead
-  ctx.beginPath();
-  ctx.moveTo(x2, y2);
-  ctx.lineTo(
-    x2 - headLength * Math.cos(angle - Math.PI / 6),
-    y2 - headLength * Math.sin(angle - Math.PI / 6)
-  );
-  ctx.moveTo(x2, y2);
-  ctx.lineTo(
-    x2 - headLength * Math.cos(angle + Math.PI / 6),
-    y2 - headLength * Math.sin(angle + Math.PI / 6)
-  );
-  ctx.stroke();
-}
-
-function drawCropPreview(x1, y1, x2, y2) {
-  // Draw dimmed overlay
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  // Clear crop area
-  const width = x2 - x1;
-  const height = y2 - y1;
-  ctx.clearRect(x1, y1, width, height);
-  ctx.drawImage(tempCanvas, x1, y1, width, height, x1, y1, width, height);
-
-  // Draw crop border
-  ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 2;
-  ctx.setLineDash([5, 5]);
-  ctx.strokeRect(x1, y1, width, height);
-  ctx.setLineDash([]);
-}
-
-function executeCrop(x1, y1, x2, y2) {
-  // Normalize coordinates
-  const left = Math.min(x1, x2);
-  const top = Math.min(y1, y2);
-  const width = Math.abs(x2 - x1);
-  const height = Math.abs(y2 - y1);
-
-  if (width < 10 || height < 10) {
-    // Too small, cancel crop
-    ctx.drawImage(tempCanvas, 0, 0);
-    return;
-  }
-
-  // Get cropped image data
-  const croppedData = ctx.getImageData(left, top, width, height);
-
-  // Resize canvas
-  canvas.width = width;
-  canvas.height = height;
-
-  // Draw cropped image
-  ctx.putImageData(croppedData, 0, 0);
-
-  saveHistory();
-  selectTool(null); // Deselect crop tool
-}
-
-// Text input handling
-function placeTextInput(clientX, clientY) {
+function handleTextEditRequest(request) {
   const overlay = document.getElementById('text-input-overlay');
   const input = document.getElementById('text-input');
 
-  overlay.style.left = clientX + 'px';
-  overlay.style.top = clientY + 'px';
+  activeTextRequest = { ...request, finalized: false };
+
+  overlay.style.left = `${request.clientX}px`;
+  overlay.style.top = `${request.clientY}px`;
   overlay.style.display = 'block';
 
-  input.value = '';
+  input.value = request.annotation?.text || '';
   input.focus();
 
-  textInputActive = true;
-  isDrawing = false;
+  overlay.onclick = (event) => event.stopPropagation();
 
-  // Prevent clicks on overlay from propagating to canvas
-  overlay.onclick = (e) => {
-    e.stopPropagation();
-  };
-
-  // Remove old listeners
-  input.onkeydown = null;
-  input.onblur = null;
-
-  input.onkeydown = (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      finalizeText(clientX, clientY, input.value);
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
+  input.onkeydown = (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      finalizeText(input.value);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
       cancelText();
     }
   };
 
-  // Delay blur handler to prevent immediate triggering
-  setTimeout(() => {
-    input.onblur = () => {
-      setTimeout(() => {
-        if (textInputActive) {
-          finalizeText(clientX, clientY, input.value);
-        }
-      }, 150);
-    };
-  }, 100);
+  input.onblur = () => finalizeText(input.value);
 }
 
-function finalizeText(clientX, clientY, text) {
-  if (!text.trim()) {
-    cancelText();
-    return;
+function finalizeText(text) {
+  const request = activeTextRequest;
+  if (!request || request.finalized) return;
+  request.finalized = true;
+
+  if (request.annotation) {
+    engine.updateText(request.annotation.id, text);
+  } else if (text.trim()) {
+    engine.insertText(request.imagePoint, text);
   }
 
-  const coords = getCanvasCoordinates({ clientX, clientY });
-
-  ctx.font = `${currentFontSize}px Arial`;
-  ctx.fillStyle = currentColor;
-  ctx.textBaseline = 'top';
-  ctx.fillText(text, coords.x, coords.y);
-
-  saveHistory();
-  cancelText();
+  closeTextOverlay();
 }
 
 function cancelText() {
-  document.getElementById('text-input-overlay').style.display = 'none';
-  textInputActive = false;
+  if (activeTextRequest) activeTextRequest.finalized = true;
+  closeTextOverlay();
 }
+
+function closeTextOverlay() {
+  document.getElementById('text-input-overlay').style.display = 'none';
+  activeTextRequest = null;
+}
+
+function isTextInputActive() {
+  return Boolean(activeTextRequest && !activeTextRequest.finalized);
+}
+
+// ── Upload / share flow ───────────────────────────────────────────────
 
 function isInspectableUrl(url) {
   return typeof url === 'string' &&
@@ -455,14 +225,14 @@ function setUploadButtonsState({ busy, activeButtonId = null }) {
   });
 }
 
-// Copy to clipboard
+// Copy to clipboard (flattened result)
 async function copyToClipboard() {
   try {
-    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    const blob = await engine.exportBlob('image/png');
     await navigator.clipboard.write([
       new ClipboardItem({ 'image/png': blob })
     ]);
-    
+
     // Visual feedback
     const btn = document.getElementById('copy-btn');
     const originalText = btn.innerHTML;
@@ -477,14 +247,23 @@ async function copyToClipboard() {
 }
 
 // Save, upload, and navigate to the shared preview.
+// The BASE image (crop applied, annotations NOT burned in) is uploaded along
+// with the vector annotations, so the shared snapshot stays editable on the web.
 async function finishEditing({ includeLogs = false } = {}) {
   const urlParams = new URLSearchParams(window.location.search);
   const captureId = urlParams.get('id');
   const activeButtonId = includeLogs ? 'upload-with-logs-btn' : 'done-btn';
 
+  if (isTextInputActive()) {
+    finalizeText(document.getElementById('text-input').value);
+  }
+
   try {
-    // Convert canvas to blob
-    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    const baseBlob = await engine.exportBaseBlob('image/png');
+    const annotations = engine.getAnnotations({ relativeToCrop: true });
+    const annotationsJson = annotations.length > 0
+      ? engine.serialize({ relativeToCrop: true })
+      : null;
 
     // Get existing capture to preserve other data
     const existingCapture = await getCapture(captureId);
@@ -514,17 +293,18 @@ async function finishEditing({ includeLogs = false } = {}) {
         console.warn('Failed to refresh logs and network data before upload:', logError);
       }
     }
-    
-    // Save to IndexedDB first (fallback safety)
+
+    // Save to IndexedDB first (fallback safety) — base image + vector annotations
     await saveCapture(
       captureId,
-      blob,
+      baseBlob,
       existingCapture.filename,
       'image/png',
       consoleLogs,
       networkLogs,
       sourceUrl,
-      deviceMeta
+      deviceMeta,
+      annotationsJson
     );
 
     // Check if user is authenticated
@@ -549,14 +329,15 @@ async function finishEditing({ includeLogs = false } = {}) {
 
     // Upload to Convex
     const result = await uploadToConvex(
-      blob,
+      baseBlob,
       existingCapture.filename,
       'image/png',
       captureType,
       { sourceUrl: sourceUrl || undefined },
       uploadConsoleLogs,
       uploadNetworkLogs,
-      deviceMeta
+      deviceMeta,
+      annotationsJson
     );
 
     // Build web app preview link
@@ -586,7 +367,7 @@ async function finishEditing({ includeLogs = false } = {}) {
   } catch (error) {
     console.error('Failed to save/upload edited screenshot:', error);
     setUploadButtonsState({ busy: false });
-    
+
     // Try to fallback to video.html preview if we saved locally
     const fallbackUrl = `video.html?id=${captureId}`;
     const shouldViewFallback = await showConfirmDialog({
@@ -663,12 +444,16 @@ function showConfirmDialog({
 }
 
 // Event listeners
-document.getElementById('undo-btn').addEventListener('click', undo);
-document.getElementById('redo-btn').addEventListener('click', redo);
+document.getElementById('undo-btn').addEventListener('click', () => engine.undo());
+document.getElementById('redo-btn').addEventListener('click', () => engine.redo());
+document.getElementById('select-btn').addEventListener('click', () => selectTool('select'));
 document.getElementById('crop-btn').addEventListener('click', () => selectTool('crop'));
-document.getElementById('rectangle-btn').addEventListener('click', () => selectTool('rectangle'));
+document.getElementById('rectangle-btn').addEventListener('click', () => selectTool('rect'));
 document.getElementById('arrow-btn').addEventListener('click', () => selectTool('arrow'));
+document.getElementById('line-btn').addEventListener('click', () => selectTool('line'));
+document.getElementById('freehand-btn').addEventListener('click', () => selectTool('freehand'));
 document.getElementById('text-btn').addEventListener('click', () => selectTool('text'));
+document.getElementById('delete-btn').addEventListener('click', () => engine.deleteSelected());
 document.getElementById('copy-btn').addEventListener('click', copyToClipboard);
 document.getElementById('done-btn').addEventListener('click', () => finishEditing());
 document.getElementById('upload-with-logs-btn').addEventListener('click', () => finishEditing({ includeLogs: true }));
@@ -677,7 +462,9 @@ document.getElementById('upload-with-logs-btn').addEventListener('click', () => 
 document.querySelectorAll('.color-btn').forEach(btn => {
   btn.addEventListener('click', (e) => {
     const color = e.currentTarget.dataset.color;
-    selectColor(color);
+    engine.setColor(color);
+    document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('active'));
+    e.currentTarget.classList.add('active');
   });
 });
 
@@ -686,8 +473,9 @@ const thicknessSlider = document.getElementById('thickness-slider');
 const thicknessValue = document.getElementById('thickness-value');
 if (thicknessSlider && thicknessValue) {
   thicknessSlider.addEventListener('input', (e) => {
-    currentThickness = parseInt(e.target.value);
-    thicknessValue.textContent = currentThickness + 'px';
+    const thickness = parseInt(e.target.value, 10);
+    engine.setThickness(thickness);
+    thicknessValue.textContent = thickness + 'px';
   });
 }
 
@@ -696,42 +484,39 @@ const fontSizeSlider = document.getElementById('font-size-slider');
 const fontSizeValue = document.getElementById('font-size-value');
 if (fontSizeSlider && fontSizeValue) {
   fontSizeSlider.addEventListener('input', (e) => {
-    currentFontSize = parseInt(e.target.value);
-    fontSizeValue.textContent = currentFontSize + 'px';
+    const fontSize = parseInt(e.target.value, 10);
+    engine.setFontSize(fontSize);
+    fontSizeValue.textContent = fontSize + 'px';
   });
 }
 
-// Canvas mouse events
 document.addEventListener('DOMContentLoaded', () => {
   init();
-  
-  // Delay canvas event listeners until canvas is ready
-  setTimeout(() => {
-    canvas = document.getElementById('editor-canvas');
-    if (canvas) {
-      canvas.addEventListener('mousedown', handleMouseDown);
-      canvas.addEventListener('mousemove', handleMouseMove);
-      canvas.addEventListener('mouseup', handleMouseUp);
-      canvas.addEventListener('mouseleave', handleMouseUp);
-    }
-  }, 100);
 });
 
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
-  if (textInputActive) return;
+  if (!engine || isTextInputActive()) return;
+  const target = e.target;
+  if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
 
   if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
     e.preventDefault();
     if (e.shiftKey) {
-      redo();
+      engine.redo();
     } else {
-      undo();
+      engine.undo();
     }
   } else if ((e.metaKey || e.ctrlKey) && e.key === 'c') {
     e.preventDefault();
     copyToClipboard();
+  } else if (e.key === 'Delete' || e.key === 'Backspace') {
+    if (engine.deleteSelected()) e.preventDefault();
   } else if (e.key === 'Escape') {
-    selectTool(null);
+    selectTool('select');
+  } else if (!e.metaKey && !e.ctrlKey && !e.altKey) {
+    const toolByKey = { v: 'select', r: 'rect', a: 'arrow', l: 'line', p: 'freehand', t: 'text' };
+    const tool = toolByKey[e.key.toLowerCase()];
+    if (tool) selectTool(tool);
   }
 });

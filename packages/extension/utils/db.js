@@ -34,11 +34,11 @@ function openDB() {
   return dbPromise;
 }
 
-export async function saveCapture(id, blob, filename, mimeType, consoleLogs = null, networkLogs = null, sourceUrl = null, deviceMeta = null) {
+export async function saveCapture(id, blob, filename, mimeType, consoleLogs = null, networkLogs = null, sourceUrl = null, deviceMeta = null, annotations = null) {
   const db = await openDB();
   const transaction = db.transaction([STORE_NAME], 'readwrite');
   const store = transaction.objectStore(STORE_NAME);
-  
+
   const capture = {
     id,
     blob,
@@ -49,6 +49,7 @@ export async function saveCapture(id, blob, filename, mimeType, consoleLogs = nu
     networkLogs,    // Array of network request entries
     sourceUrl,      // Original page URL
     deviceMeta,     // Device metadata (browser, OS, network, etc.)
+    annotations,    // Serialized vector annotations ({version, items} JSON)
   };
   
   return new Promise((resolve, reject) => {

@@ -8,316 +8,127 @@ import {
   setSlideshowSessionState,
   clearSlideshowSession,
 } from './utils/slideshow.js';
+import {
+  AnnotationEngine,
+  parseAnnotations,
+  renderAnnotatedBlob,
+} from './shared/annotation-engine.js';
 
-let canvas;
-let ctx;
-let tempCanvas;
-let tempCtx;
-let currentTool = null;
-let currentColor = '#ef4444';
-let currentThickness = 7;
-let currentFontSize = 20;
-let isDrawing = false;
-let startX = 0;
-let startY = 0;
-let textInputActive = false;
-let history = [];
-let historyIndex = -1;
+let engine = null;
+let activeTextRequest = null;
 let currentSessionId = null;
 let currentSession = null;
 let currentFrameIndex = 0;
 let currentCaptureId = null;
 let activeConfirmCleanup = null;
 
-const MAX_HISTORY = 50;
+const TOOL_BUTTONS = {
+  select: 'select-btn',
+  crop: 'crop-btn',
+  rect: 'rectangle-btn',
+  arrow: 'arrow-btn',
+  line: 'line-btn',
+  freehand: 'freehand-btn',
+  text: 'text-btn',
+};
 
 function getSessionIdFromLocation() {
   const params = new URLSearchParams(window.location.search);
   return params.get('id');
 }
 
-function updateHistoryButtons() {
-  document.getElementById('undo-btn').disabled = historyIndex <= 0;
-  document.getElementById('redo-btn').disabled = historyIndex >= history.length - 1;
+function updateHistoryButtons({ canUndo, canRedo } = {}) {
+  document.getElementById('undo-btn').disabled = !canUndo;
+  document.getElementById('redo-btn').disabled = !canRedo;
 }
 
-function saveHistory() {
-  if (!ctx || !canvas) return;
+function handleSelectionChange(annotation) {
+  document.getElementById('delete-btn').disabled = !annotation;
 
-  if (historyIndex < history.length - 1) {
-    history = history.slice(0, historyIndex + 1);
-  }
+  if (annotation) {
+    engine.color = annotation.color;
+    engine.thickness = annotation.thickness;
+    if (annotation.fontSize) engine.fontSize = annotation.fontSize;
 
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  history.push({
-    imageData,
-    width: canvas.width,
-    height: canvas.height,
-  });
-
-  if (history.length > MAX_HISTORY) {
-    history.shift();
-  } else {
-    historyIndex += 1;
-  }
-
-  updateHistoryButtons();
-}
-
-function resetHistory() {
-  history = [];
-  historyIndex = -1;
-  updateHistoryButtons();
-}
-
-function restoreFromHistory() {
-  const state = history[historyIndex];
-  if (!state || !ctx || !canvas) return;
-  canvas.width = state.width;
-  canvas.height = state.height;
-  ctx.putImageData(state.imageData, 0, 0);
-}
-
-function undo() {
-  if (historyIndex > 0) {
-    historyIndex -= 1;
-    restoreFromHistory();
-    updateHistoryButtons();
-  }
-}
-
-function redo() {
-  if (historyIndex < history.length - 1) {
-    historyIndex += 1;
-    restoreFromHistory();
-    updateHistoryButtons();
+    document.querySelectorAll('.color-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.color === annotation.color);
+    });
+    const thicknessSlider = document.getElementById('thickness-slider');
+    if (thicknessSlider) {
+      thicknessSlider.value = String(annotation.thickness);
+      document.getElementById('thickness-value').textContent = `${annotation.thickness}px`;
+    }
   }
 }
 
 function selectTool(tool) {
-  document.querySelectorAll('.tool-btn').forEach((button) => {
-    if (button.id === 'undo-btn' || button.id === 'redo-btn' || button.id === 'copy-btn' || button.id === 'done-btn') {
-      return;
-    }
-    if (button.id === 'prev-frame-btn' || button.id === 'next-frame-btn' || button.id === 'toggle-hide-btn' || button.id === 'delete-frame-btn') {
-      return;
-    }
-    button.classList.remove('active');
+  engine.setTool(tool);
+  Object.entries(TOOL_BUTTONS).forEach(([key, id]) => {
+    document.getElementById(id)?.classList.toggle('active', key === tool);
   });
-
-  if (currentTool === tool) {
-    currentTool = null;
-    canvas.style.cursor = 'default';
-    return;
-  }
-
-  currentTool = tool;
-  if (!tool) {
-    canvas.style.cursor = 'default';
-    return;
-  }
-
-  document.getElementById(`${tool}-btn`).classList.add('active');
-  canvas.style.cursor = 'crosshair';
 }
 
-function selectColor(button) {
-  currentColor = button.dataset.color;
-  document.querySelectorAll('.color-btn').forEach((entry) => entry.classList.remove('active'));
-  button.classList.add('active');
-}
+// ── Text input overlay ────────────────────────────────────────────────
 
-function getCanvasCoordinates(event) {
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
-
-  return {
-    x: (event.clientX - rect.left) * scaleX,
-    y: (event.clientY - rect.top) * scaleY,
-  };
-}
-
-function drawRectangle(x1, y1, x2, y2) {
-  const width = x2 - x1;
-  const height = y2 - y1;
-  ctx.strokeRect(x1, y1, width, height);
-}
-
-function drawArrow(x1, y1, x2, y2) {
-  const headLength = 20;
-  const angle = Math.atan2(y2 - y1, x2 - x1);
-
-  ctx.beginPath();
-  ctx.moveTo(x1, y1);
-  ctx.lineTo(x2, y2);
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.moveTo(x2, y2);
-  ctx.lineTo(
-    x2 - headLength * Math.cos(angle - Math.PI / 6),
-    y2 - headLength * Math.sin(angle - Math.PI / 6)
-  );
-  ctx.moveTo(x2, y2);
-  ctx.lineTo(
-    x2 - headLength * Math.cos(angle + Math.PI / 6),
-    y2 - headLength * Math.sin(angle + Math.PI / 6)
-  );
-  ctx.stroke();
-}
-
-function drawCropPreview(x1, y1, x2, y2) {
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  const width = x2 - x1;
-  const height = y2 - y1;
-  ctx.clearRect(x1, y1, width, height);
-  ctx.drawImage(tempCanvas, x1, y1, width, height, x1, y1, width, height);
-
-  ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 2;
-  ctx.setLineDash([5, 5]);
-  ctx.strokeRect(x1, y1, width, height);
-  ctx.setLineDash([]);
-}
-
-function executeCrop(x1, y1, x2, y2) {
-  const left = Math.min(x1, x2);
-  const top = Math.min(y1, y2);
-  const width = Math.abs(x2 - x1);
-  const height = Math.abs(y2 - y1);
-
-  if (width < 10 || height < 10) {
-    ctx.drawImage(tempCanvas, 0, 0);
-    return;
-  }
-
-  const croppedData = ctx.getImageData(left, top, width, height);
-  canvas.width = width;
-  canvas.height = height;
-  ctx.putImageData(croppedData, 0, 0);
-
-  saveHistory();
-  selectTool(null);
-}
-
-function placeTextInput(clientX, clientY) {
+function handleTextEditRequest(request) {
   const overlay = document.getElementById('text-input-overlay');
   const input = document.getElementById('text-input');
 
-  overlay.style.left = `${clientX}px`;
-  overlay.style.top = `${clientY}px`;
+  activeTextRequest = { ...request, finalized: false };
+
+  overlay.style.left = `${request.clientX}px`;
+  overlay.style.top = `${request.clientY}px`;
   overlay.style.display = 'block';
 
-  input.value = '';
+  input.value = request.annotation?.text || '';
   input.focus();
-  textInputActive = true;
-  isDrawing = false;
 
-  overlay.onclick = (event) => {
-    event.stopPropagation();
-  };
+  overlay.onclick = (event) => event.stopPropagation();
 
   input.onkeydown = (event) => {
     if (event.key === 'Enter') {
       event.preventDefault();
-      finalizeText(clientX, clientY, input.value);
+      finalizeText(input.value);
     } else if (event.key === 'Escape') {
       event.preventDefault();
       cancelText();
     }
   };
 
-  setTimeout(() => {
-    input.onblur = () => {
-      setTimeout(() => {
-        if (textInputActive) {
-          finalizeText(clientX, clientY, input.value);
-        }
-      }, 150);
-    };
-  }, 100);
+  input.onblur = () => finalizeText(input.value);
 }
 
-function finalizeText(clientX, clientY, text) {
-  if (!text.trim()) {
-    cancelText();
-    return;
+function finalizeText(text) {
+  const request = activeTextRequest;
+  if (!request || request.finalized) return;
+  request.finalized = true;
+
+  if (request.annotation) {
+    engine.updateText(request.annotation.id, text);
+  } else if (text.trim()) {
+    engine.insertText(request.imagePoint, text);
   }
 
-  const coords = getCanvasCoordinates({ clientX, clientY });
-  ctx.font = `${currentFontSize}px Arial`;
-  ctx.fillStyle = currentColor;
-  ctx.textBaseline = 'top';
-  ctx.fillText(text, coords.x, coords.y);
-
-  saveHistory();
-  cancelText();
+  closeTextOverlay();
 }
 
 function cancelText() {
+  if (activeTextRequest) activeTextRequest.finalized = true;
+  closeTextOverlay();
+}
+
+function closeTextOverlay() {
   document.getElementById('text-input-overlay').style.display = 'none';
-  textInputActive = false;
+  activeTextRequest = null;
 }
 
-function handleMouseDown(event) {
-  if (!currentTool || textInputActive) return;
-
-  const coords = getCanvasCoordinates(event);
-  startX = coords.x;
-  startY = coords.y;
-  isDrawing = true;
-
-  if (currentTool === 'text') {
-    placeTextInput(event.clientX, event.clientY);
-    return;
-  }
-
-  tempCanvas.width = canvas.width;
-  tempCanvas.height = canvas.height;
-  tempCtx.drawImage(canvas, 0, 0);
-}
-
-function handleMouseMove(event) {
-  if (!isDrawing || !currentTool || currentTool === 'text') return;
-
-  const coords = getCanvasCoordinates(event);
-  ctx.drawImage(tempCanvas, 0, 0);
-
-  ctx.strokeStyle = currentColor;
-  ctx.lineWidth = currentThickness;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-
-  if (currentTool === 'crop') {
-    drawCropPreview(startX, startY, coords.x, coords.y);
-  } else if (currentTool === 'rectangle') {
-    drawRectangle(startX, startY, coords.x, coords.y);
-  } else if (currentTool === 'arrow') {
-    drawArrow(startX, startY, coords.x, coords.y);
-  }
-}
-
-function handleMouseUp(event) {
-  if (!isDrawing) return;
-  isDrawing = false;
-
-  if (!currentTool || currentTool === 'text') return;
-
-  const coords = getCanvasCoordinates(event);
-
-  if (currentTool === 'crop') {
-    executeCrop(startX, startY, coords.x, coords.y);
-  } else {
-    saveHistory();
-  }
+function isTextInputActive() {
+  return Boolean(activeTextRequest && !activeTextRequest.finalized);
 }
 
 async function copyToClipboard() {
   try {
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+    const blob = await engine.exportBlob('image/png');
     await navigator.clipboard.write([
       new ClipboardItem({ 'image/png': blob }),
     ]);
@@ -333,6 +144,8 @@ async function copyToClipboard() {
     alert('Failed to copy to clipboard');
   }
 }
+
+// ── Frames ────────────────────────────────────────────────────────────
 
 function setFrameStatus(frame) {
   const total = currentSession?.frames?.length ?? 0;
@@ -365,25 +178,6 @@ function updateThumbnailStrip() {
   });
 }
 
-async function loadImageToCanvas(blob) {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    const objectUrl = URL.createObjectURL(blob);
-
-    image.onload = () => {
-      canvas.width = image.width;
-      canvas.height = image.height;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(image, 0, 0);
-      URL.revokeObjectURL(objectUrl);
-      resolve();
-    };
-
-    image.onerror = reject;
-    image.src = objectUrl;
-  });
-}
-
 async function refreshSession() {
   currentSession = await getResolvedSlideshowSession(currentSessionId);
   if (!currentSession || currentSession.frames.length === 0) {
@@ -404,46 +198,51 @@ async function loadFrame(index) {
   const frame = currentSession.frames[currentFrameIndex];
   currentCaptureId = frame.captureId;
 
-  await loadImageToCanvas(frame.capture.blob);
-  resetHistory();
-  saveHistory();
+  await engine.loadImage(frame.capture.blob, {
+    annotations: parseAnnotations(frame.annotations),
+  });
+  selectTool('select');
   setFrameStatus(frame);
   updateThumbnailStrip();
 }
 
+// Persist the current frame: the capture blob stays the unannotated base
+// (crop gets baked in when used), the vector annotations live on the frame.
 async function persistCurrentFrameEdits() {
-  if (!currentCaptureId || !canvas) return;
+  if (!currentCaptureId || !engine) return;
 
-  const existingCapture = await getCapture(currentCaptureId);
-  if (!existingCapture) return;
+  if (isTextInputActive()) {
+    finalizeText(document.getElementById('text-input').value);
+  }
 
-  const blob = await new Promise((resolve, reject) => {
-    canvas.toBlob((value) => {
-      if (!value) {
-        reject(new Error('Failed to persist slideshow frame'));
-        return;
-      }
-      resolve(value);
-    }, 'image/png');
-  });
+  const annotations = engine.getAnnotations({ relativeToCrop: true });
+  const annotationsJson = annotations.length > 0
+    ? engine.serialize({ relativeToCrop: true })
+    : null;
 
-  await saveCapture(
-    currentCaptureId,
-    blob,
-    existingCapture.filename,
-    'image/png',
-    existingCapture.consoleLogs,
-    existingCapture.networkLogs,
-    existingCapture.sourceUrl,
-    existingCapture.deviceMeta
-  );
+  if (engine.hasCrop) {
+    const existingCapture = await getCapture(currentCaptureId);
+    if (!existingCapture) return;
+
+    const baseBlob = await engine.exportBaseBlob('image/png');
+    await saveCapture(
+      currentCaptureId,
+      baseBlob,
+      existingCapture.filename,
+      'image/png',
+      existingCapture.consoleLogs,
+      existingCapture.networkLogs,
+      existingCapture.sourceUrl,
+      existingCapture.deviceMeta
+    );
+  }
 
   await updateSlideshowFrame(currentSessionId, currentCaptureId, (frame) => ({
     ...frame,
-    filename: existingCapture.filename,
     mimeType: 'image/png',
-    width: canvas.width,
-    height: canvas.height,
+    width: engine.canvas.width,
+    height: engine.canvas.height,
+    annotations: annotationsJson,
   }));
 }
 
@@ -456,6 +255,7 @@ async function navigateToFrame(index) {
 }
 
 async function toggleFrameHidden() {
+  await persistCurrentFrameEdits();
   const frame = currentSession.frames[currentFrameIndex];
   await updateSlideshowFrame(currentSessionId, frame.captureId, (entry) => ({
     ...entry,
@@ -489,6 +289,27 @@ async function deleteCurrentFrame() {
   await loadFrame(Math.min(currentFrameIndex, currentSession.frames.length - 1));
 }
 
+// Flatten each frame's annotations into its blob for upload — the shared
+// slideshow shows exactly what was drawn.
+async function buildUploadSession(session) {
+  const frames = [];
+  for (const frame of session.frames) {
+    let blob = frame.capture?.blob;
+    if (blob && frame.annotations) {
+      try {
+        blob = await renderAnnotatedBlob(blob, frame.annotations);
+      } catch (error) {
+        console.warn('Failed to flatten frame annotations, uploading base image:', error);
+      }
+    }
+    frames.push({
+      ...frame,
+      capture: { ...frame.capture, blob },
+    });
+  }
+  return { ...session, frames };
+}
+
 async function finishEditing() {
   const doneButton = document.getElementById('done-btn');
   const originalText = doneButton.textContent;
@@ -507,7 +328,8 @@ async function finishEditing() {
     doneButton.textContent = 'Uploading...';
 
     const session = await getResolvedSlideshowSession(currentSessionId);
-    const result = await uploadSlideshowToConvex(session);
+    const uploadSession = await buildUploadSession(session);
+    const result = await uploadSlideshowToConvex(uploadSession);
 
     try {
       await navigator.clipboard.writeText(result.shareUrl);
@@ -592,10 +414,15 @@ async function init() {
     return;
   }
 
-  canvas = document.getElementById('editor-canvas');
-  ctx = canvas.getContext('2d', { willReadFrequently: true });
-  tempCanvas = document.createElement('canvas');
-  tempCtx = tempCanvas.getContext('2d');
+  const canvas = document.getElementById('editor-canvas');
+  engine = new AnnotationEngine(canvas, {
+    enableCrop: true,
+    onSelectionChange: handleSelectionChange,
+    onHistoryChange: updateHistoryButtons,
+    onTextEditRequest: handleTextEditRequest,
+  });
+  engine.thickness = parseInt(document.getElementById('thickness-slider')?.value ?? '7', 10);
+  engine.fontSize = parseInt(document.getElementById('font-size-slider')?.value ?? '20', 10);
 
   const available = await refreshSession();
   if (!available) return;
@@ -605,12 +432,16 @@ async function init() {
   document.getElementById('toolbar-header').style.display = 'flex';
 }
 
-document.getElementById('undo-btn').addEventListener('click', undo);
-document.getElementById('redo-btn').addEventListener('click', redo);
+document.getElementById('undo-btn').addEventListener('click', () => engine.undo());
+document.getElementById('redo-btn').addEventListener('click', () => engine.redo());
+document.getElementById('select-btn').addEventListener('click', () => selectTool('select'));
 document.getElementById('crop-btn').addEventListener('click', () => selectTool('crop'));
-document.getElementById('rectangle-btn').addEventListener('click', () => selectTool('rectangle'));
+document.getElementById('rectangle-btn').addEventListener('click', () => selectTool('rect'));
 document.getElementById('arrow-btn').addEventListener('click', () => selectTool('arrow'));
+document.getElementById('line-btn').addEventListener('click', () => selectTool('line'));
+document.getElementById('freehand-btn').addEventListener('click', () => selectTool('freehand'));
 document.getElementById('text-btn').addEventListener('click', () => selectTool('text'));
+document.getElementById('delete-btn').addEventListener('click', () => engine.deleteSelected());
 document.getElementById('copy-btn').addEventListener('click', copyToClipboard);
 document.getElementById('done-btn').addEventListener('click', finishEditing);
 document.getElementById('prev-frame-btn').addEventListener('click', () => navigateToFrame(currentFrameIndex - 1));
@@ -619,22 +450,52 @@ document.getElementById('toggle-hide-btn').addEventListener('click', toggleFrame
 document.getElementById('delete-frame-btn').addEventListener('click', deleteCurrentFrame);
 
 document.querySelectorAll('.color-btn').forEach((button) => {
-  button.addEventListener('click', () => selectColor(button));
+  button.addEventListener('click', () => {
+    engine.setColor(button.dataset.color);
+    document.querySelectorAll('.color-btn').forEach((entry) => entry.classList.remove('active'));
+    button.classList.add('active');
+  });
 });
 
 document.getElementById('thickness-slider').addEventListener('input', (event) => {
-  currentThickness = parseInt(event.target.value, 10);
-  document.getElementById('thickness-value').textContent = `${currentThickness}px`;
+  const thickness = parseInt(event.target.value, 10);
+  engine.setThickness(thickness);
+  document.getElementById('thickness-value').textContent = `${thickness}px`;
 });
 
 document.getElementById('font-size-slider').addEventListener('input', (event) => {
-  currentFontSize = parseInt(event.target.value, 10);
-  document.getElementById('font-size-value').textContent = `${currentFontSize}px`;
+  const fontSize = parseInt(event.target.value, 10);
+  engine.setFontSize(fontSize);
+  document.getElementById('font-size-value').textContent = `${fontSize}px`;
 });
 
 document.addEventListener('DOMContentLoaded', async () => {
   await init();
-  canvas.addEventListener('mousedown', handleMouseDown);
-  canvas.addEventListener('mousemove', handleMouseMove);
-  canvas.addEventListener('mouseup', handleMouseUp);
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (!engine || isTextInputActive()) return;
+  const target = e.target;
+  if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
+
+  if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+    e.preventDefault();
+    if (e.shiftKey) {
+      engine.redo();
+    } else {
+      engine.undo();
+    }
+  } else if ((e.metaKey || e.ctrlKey) && e.key === 'c') {
+    e.preventDefault();
+    copyToClipboard();
+  } else if (e.key === 'Delete' || e.key === 'Backspace') {
+    if (engine.deleteSelected()) e.preventDefault();
+  } else if (e.key === 'Escape') {
+    selectTool('select');
+  } else if (!e.metaKey && !e.ctrlKey && !e.altKey) {
+    const toolByKey = { v: 'select', r: 'rect', a: 'arrow', l: 'line', p: 'freehand', t: 'text' };
+    const tool = toolByKey[e.key.toLowerCase()];
+    if (tool) selectTool(tool);
+  }
 });

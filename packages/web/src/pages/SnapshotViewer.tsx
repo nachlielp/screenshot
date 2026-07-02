@@ -3,7 +3,9 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, MouseEvent as ReactMouseEvent, RefCallback } from "react";
-import { ImageEditor } from "../components/ImageEditor";
+import { ImageEditor, type ImageEditorSaveResult } from "../components/ImageEditor";
+import { AnnotatedImage } from "../components/AnnotatedImage";
+import { renderAnnotatedBlob } from "@shared/annotation-engine";
 import { buildAppUrl } from "../lib/routes";
 import "./SnapshotViewer.css";
 
@@ -76,6 +78,7 @@ export default function SnapshotViewer() {
   const incrementView = useMutation(api.screenshots.incrementViewCount);
   const persistMarkedView = useMutation(api.screenshots.saveMarkedView);
   const persistHiddenEntries = useMutation(api.screenshots.setHiddenLogEntries);
+  const persistAnnotations = useMutation(api.screenshots.saveScreenshotAnnotations);
   const updateScreenshotTitle = useMutation(api.screenshots.updateScreenshotTitle);
   const viewIncremented = useRef(false);
   const initialViewSetRef = useRef(false);
@@ -443,29 +446,46 @@ export default function SnapshotViewer() {
     "--sv-image-pane": `${imagePaneRatio * 100}%`,
   } as CSSProperties;
 
-  const handleEditorSave = (blob: Blob) => {
-    const nextUrl = URL.createObjectURL(blob);
+  const snapshotAnnotations =
+    (screenshot &&
+      "annotations" in screenshot &&
+      (screenshot.annotations as string | undefined)) ||
+    null;
 
-    if (localImageUrlRef.current) {
-      URL.revokeObjectURL(localImageUrlRef.current);
+  const handleEditorSave = async (result: ImageEditorSaveResult) => {
+    if (!shareToken) return;
+
+    setEditMode(false);
+
+    try {
+      const nextAnnotations =
+        result.annotations.length > 0 ? result.annotationsJson : undefined;
+      await persistAnnotations({ shareToken, annotations: nextAnnotations });
+      setMarkNotice("Annotations saved.");
+    } catch (error) {
+      console.error("Failed to save annotations:", error);
+      setMarkNotice("We couldn’t save the annotations. Please try again.");
+    }
+  };
+
+  const getFlattenedImageBlob = async (): Promise<Blob> => {
+    const imageUrl = displayImageUrl ?? screenshot?.publicUrl;
+    if (!imageUrl) throw new Error("No image available");
+
+    if (snapshotAnnotations) {
+      return renderAnnotatedBlob(imageUrl, snapshotAnnotations);
     }
 
-    localImageUrlRef.current = nextUrl;
-    setDisplayImageUrl(nextUrl);
-    setEditMode(false);
+    const response = await fetch(imageUrl);
+    if (!response.ok) {
+      throw new Error("Failed to fetch image");
+    }
+    return response.blob();
   };
 
   const handleCopyImage = async () => {
     try {
-      const imageUrl = displayImageUrl ?? screenshot?.publicUrl;
-      if (!imageUrl) return;
-
-      const response = await fetch(imageUrl);
-      if (!response.ok) {
-        throw new Error("Failed to fetch image");
-      }
-
-      const blob = await response.blob();
+      const blob = await getFlattenedImageBlob();
       await navigator.clipboard.write([
         new ClipboardItem({ [blob.type || "image/png"]: blob }),
       ]);
@@ -473,6 +493,20 @@ export default function SnapshotViewer() {
     } catch (error) {
       console.error("Failed to copy image:", error);
       setImageCopyState("error");
+    }
+  };
+
+  const handleDownloadImage = async () => {
+    try {
+      const blob = await getFlattenedImageBlob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = screenshot?.filename ?? "snapshot.png";
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (error) {
+      console.error("Failed to download image:", error);
     }
   };
 
@@ -844,19 +878,19 @@ export default function SnapshotViewer() {
                     ? "⚠️ Copy Failed"
                     : "📋 Copy Image"}
               </button>
-              <a
-                href={displayImageUrl ?? screenshot.publicUrl}
-                download={screenshot.filename}
+              <button
+                onClick={() => void handleDownloadImage()}
                 className="sv-control-btn"
               >
                 ⬇️ Download Image
-              </a>
+              </button>
             </div>
 
             {editMode ? (
               <ImageEditor
                 imageUrl={displayImageUrl ?? screenshot.publicUrl}
-                onSave={handleEditorSave}
+                initialAnnotations={snapshotAnnotations}
+                onSave={(result) => void handleEditorSave(result)}
                 onCancel={() => setEditMode(false)}
                 showSaveButton={false}
                 saveRequestToken={editorSaveRequestToken}
@@ -864,8 +898,9 @@ export default function SnapshotViewer() {
             ) : (
               <div className="sv-image-viewer">
                 <div className="sv-image-stage">
-                  <img
+                  <AnnotatedImage
                     src={displayImageUrl ?? screenshot.publicUrl}
+                    annotations={snapshotAnnotations}
                     alt="Screenshot"
                   />
                 </div>

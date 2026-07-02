@@ -53,6 +53,23 @@ async function requireOwnedScreenshot(ctx: MutationCtx, shareToken: string) {
   return screenshot;
 }
 
+// Cap serialized annotations so a single doc can't balloon (freehand trails
+// can get large). ~900KB keeps well under Convex's 1MB document limit.
+const MAX_ANNOTATIONS_BYTES = 900 * 1024;
+
+function normalizeAnnotationsField(annotations?: string | null) {
+  if (!annotations) return undefined;
+  if (annotations.length > MAX_ANNOTATIONS_BYTES) {
+    throw new Error("Annotations payload is too large");
+  }
+  try {
+    JSON.parse(annotations);
+  } catch {
+    throw new Error("Annotations must be valid JSON");
+  }
+  return annotations;
+}
+
 // Generate a random share token
 function generateShareToken(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(16)))
@@ -153,6 +170,7 @@ export const uploadScreenshot = mutation({
     deviceUserAgent: v.optional(v.string()),
     deviceLanguage: v.optional(v.string()),
     captureTimestamp: v.optional(v.string()),
+    annotations: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -236,6 +254,7 @@ export const uploadScreenshot = mutation({
       deviceUserAgent: args.deviceUserAgent,
       deviceLanguage: args.deviceLanguage,
       captureTimestamp: args.captureTimestamp,
+      annotations: normalizeAnnotationsField(args.annotations),
       createdAt: now,
       expiresAt: expiresAt,
       shareToken: shareToken,
@@ -428,6 +447,24 @@ export const saveMarkedView = mutation({
     });
 
     return nextMarkedView ?? null;
+  },
+});
+
+// Save (or clear) the vector annotations for a snapshot. The stored image
+// stays untouched; viewers render these on top, so edits stay editable.
+export const saveScreenshotAnnotations = mutation({
+  args: {
+    shareToken: v.string(),
+    annotations: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const screenshot = await requireOwnedScreenshot(ctx, args.shareToken);
+
+    await ctx.db.patch(screenshot._id, {
+      annotations: normalizeAnnotationsField(args.annotations),
+    });
+
+    return args.annotations ?? null;
   },
 });
 

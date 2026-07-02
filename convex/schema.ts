@@ -93,6 +93,10 @@ export default defineSchema({
     lastViewedAt: v.optional(v.number()),
     markedView: v.optional(markedView),
     hiddenLogEntries: v.optional(hiddenLogEntries),
+    // Vector annotations as serialized JSON ({version, items}). The base
+    // image in storage stays unannotated; viewers render these on top, so
+    // annotations remain editable after upload.
+    annotations: v.optional(v.string()),
   })
     .index("by_userId", ["userId"])
     .index("by_shareToken", ["shareToken"])
