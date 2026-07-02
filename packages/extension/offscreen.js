@@ -2,11 +2,11 @@ import { saveCapture } from './utils/db.js';
 
 // Listen for messages from the service worker
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.target && message.target !== "offscreen") {
-        return false;
-    }
-
-    if (!message.target && !["start-recording", "stop-recording", "capture-desktop-screenshot"].includes(message.type)) {
+    // Only handle messages explicitly addressed to the offscreen document.
+    // Untargeted start/stop-recording broadcasts come from the popup and are
+    // meant for the service worker — handling them here raced the real
+    // recording and could kill its tracks.
+    if (message.target !== "offscreen") {
         return false;
     }
 

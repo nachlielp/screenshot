@@ -424,8 +424,15 @@ export const saveMarkedView = mutation({
   handler: async (ctx, args) => {
     const screenshot = await requireOwnedScreenshot(ctx, args.shareToken);
 
+    // Highlights on hidden log entries would point at invisible rows
+    const hiddenBySource = {
+      console: new Set(screenshot.hiddenLogEntries?.console ?? []),
+      network: new Set(screenshot.hiddenLogEntries?.network ?? []),
+    };
+
     const normalizedItems = [...args.markedView.items]
       .sort((a, b) => a.order - b.order)
+      .filter((item) => !hiddenBySource[item.source].has(Math.floor(item.entryIndex)))
       .map((item, index) => ({
         ...item,
         entryIndex: Math.max(0, Math.floor(item.entryIndex)),

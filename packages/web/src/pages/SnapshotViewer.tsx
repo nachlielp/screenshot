@@ -455,16 +455,17 @@ export default function SnapshotViewer() {
   const handleEditorSave = async (result: ImageEditorSaveResult) => {
     if (!shareToken) return;
 
-    setEditMode(false);
-
     try {
       const nextAnnotations =
         result.annotations.length > 0 ? result.annotationsJson : undefined;
       await persistAnnotations({ shareToken, annotations: nextAnnotations });
+      // Only leave edit mode once the save landed — closing first would
+      // destroy the editor (and the unsaved work) on failure.
+      setEditMode(false);
       setMarkNotice("Annotations saved.");
     } catch (error) {
       console.error("Failed to save annotations:", error);
-      setMarkNotice("We couldn’t save the annotations. Please try again.");
+      setMarkNotice("We couldn’t save the annotations — your edits are still open. Please try again.");
     }
   };
 

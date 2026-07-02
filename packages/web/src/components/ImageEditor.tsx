@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import {
   AnnotationEngine,
+  parseAnnotations,
   type Annotation,
   type TextEditRequest,
 } from '@shared/annotation-engine';
@@ -98,13 +99,9 @@ export function ImageEditor({
     engine.fontSize = 20;
 
     let cancelled = false;
-    const parsed = initialAnnotationsRef.current;
     void engine
       .loadImage(imageUrl, {
-        annotations:
-          typeof parsed === 'string'
-            ? (JSON.parse(parsed || '{"items":[]}').items ?? [])
-            : (parsed ?? []),
+        annotations: parseAnnotations(initialAnnotationsRef.current),
       })
       .then(() => {
         if (!cancelled) engine.setTool('select');

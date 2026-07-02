@@ -197,7 +197,11 @@ function AuthenticatedLibrary() {
 
   const handleBatchDelete = () => {
     if (selectedKeys.size === 0) return;
-    const selectedItems = orderedItems.filter((item) => selectedKeys.has(getItemKey(item)));
+    // Look up selections in the full loaded list, not the search-filtered
+    // view — items selected before typing a query must still be deleted.
+    const selectedItems = (libraryItems ?? []).filter((item) =>
+      selectedKeys.has(getItemKey(item))
+    );
     const count = selectedItems.length;
 
     setConfirmState({
@@ -385,7 +389,18 @@ function AuthenticatedLibrary() {
       ) : orderedItems.length === 0 ? (
         <div className="lib-empty">
           <h2>No matches</h2>
-          <p>No captures match “{searchQuery}”.</p>
+          <p>
+            No captures in the {libraryItems.length} loaded item
+            {libraryItems.length !== 1 ? "s" : ""} match “{searchQuery}”.
+          </p>
+          {mayHaveMore && (
+            <button
+              className="lib-btn lib-btn-outline"
+              onClick={() => setLibraryLimit((limit) => limit + LIBRARY_PAGE_SIZE)}
+            >
+              Search older captures
+            </button>
+          )}
         </div>
       ) : (
         <div className="lib-content">
@@ -404,13 +419,13 @@ function AuthenticatedLibrary() {
               groupIndex={index}
             />
           ))}
-          {mayHaveMore && !normalizedQuery && (
+          {mayHaveMore && (
             <div className="lib-load-more">
               <button
                 className="lib-btn lib-btn-outline"
                 onClick={() => setLibraryLimit((limit) => limit + LIBRARY_PAGE_SIZE)}
               >
-                Load more
+                {normalizedQuery ? "Search older captures" : "Load more"}
               </button>
             </div>
           )}

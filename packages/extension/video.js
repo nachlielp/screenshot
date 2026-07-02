@@ -1,4 +1,4 @@
-import { getCapture, saveCapture, deleteCapture } from './utils/db.js';
+import { getCapture, saveCapture, deleteCapture, getSlideshowSession } from './utils/db.js';
 import { uploadToConvex } from './utils/convex-client.js';
 import { isAuthenticated } from './utils/auth.js';
 import { getRuntimeConfig } from './utils/runtime-config.js';
@@ -6,7 +6,6 @@ import {
   createSlideshowSession,
   appendFrameToSlideshowSession,
   setSlideshowSessionState,
-  getSlideshowSession,
 } from './utils/slideshow.js';
 
 const VERSION = 'v2.0.0';
