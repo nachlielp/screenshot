@@ -12,7 +12,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     switch (message.type) {
         case "start-recording":
-            startRecording(message.data)
+            startRecording(message.data, message.source || "tab")
                 .then(() => sendResponse({ success: true }))
                 .catch((error) => sendResponse({ success: false, error: error.message }));
             return true;
@@ -39,6 +39,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 let mediaRecorder = null;
 let recordedChunks = [];
+let recordingSource = "tab";
 // Resources owned by the active recording; released by releaseRecordingResources().
 let recordingResources = { tabStream: null, micStream: null, audioContext: null };
 
@@ -89,26 +90,31 @@ async function stopTabCapture () {
 }
 
 /**
- * Starts the recording process for the provided stream ID.
- * @param {string} streamId - The stream ID for the tab to be recorded.
+ * Starts recording a tab or desktop stream.
+ * @param {string} streamId - Stream id from tabCapture.getMediaStreamId or
+ *   desktopCapture.chooseDesktopMedia.
+ * @param {"tab"|"desktop"} source - Which chromeMediaSource the id belongs to.
  */
-async function startRecording (streamId) {
+async function startRecording (streamId, source = "tab") {
     if (mediaRecorder && mediaRecorder.state !== "inactive") {
         throw new Error("Recording is already in progress");
     }
 
     recordedChunks = [];
-    let tabStream = null;
+    recordingSource = source;
+    let captureStream = null;
     let micStream = null;
 
     try {
-        // Create media streams for tab capture and microphone
-        tabStream = await getTabMediaStream(streamId);
-        micStream = await getMicrophoneStream();
+        captureStream = await getCaptureStream(streamId, source);
+        // The microphone is best-effort — record without narration if denied
+        micStream = await getMicrophoneStream().catch((error) => {
+            console.warn("[offscreen] Microphone unavailable, recording without it:", error.message);
+            return null;
+        });
 
-        // Combine tab and microphone streams
-        const { combinedStream, audioContext } = combineMediaStreams(tabStream, micStream);
-        recordingResources = { tabStream, micStream, audioContext };
+        const { combinedStream, audioContext } = combineMediaStreams(captureStream, micStream);
+        recordingResources = { tabStream: captureStream, micStream, audioContext };
 
         mediaRecorder = new MediaRecorder(combinedStream, {
             mimeType: "video/webm",
@@ -120,7 +126,7 @@ async function startRecording (streamId) {
 
         mediaRecorder.start();
     } catch (error) {
-        tabStream?.getTracks().forEach((track) => track.stop());
+        captureStream?.getTracks().forEach((track) => track.stop());
         micStream?.getTracks().forEach((track) => track.stop());
         releaseRecordingResources();
         mediaRecorder = null;
@@ -130,29 +136,38 @@ async function startRecording (streamId) {
 }
 
 /**
- * Gets the media stream for the tab being captured.
- * @param {string} streamId - The stream ID for the tab.
- * @returns {Promise<MediaStream>} - The media stream for the tab.
+ * Gets the video (+ audio where available) stream for a tab or desktop capture.
+ * @param {string} streamId
+ * @param {"tab"|"desktop"} source
+ * @returns {Promise<MediaStream>}
  */
-
-async function getTabMediaStream (streamId) {
-    return navigator.mediaDevices.getUserMedia({
+async function getCaptureStream (streamId, source) {
+    const isDesktop = source === "desktop";
+    const constraints = {
         audio: {
             mandatory: {
-                chromeMediaSource: "tab",
+                chromeMediaSource: source,
                 chromeMediaSourceId: streamId,
             },
         },
         video: {
             mandatory: {
-                chromeMediaSource: "tab",
+                chromeMediaSource: source,
                 chromeMediaSourceId: streamId,
-                maxWidth: 1920,
-                maxHeight: 1080,
+                maxWidth: isDesktop ? 3840 : 1920,
+                maxHeight: isDesktop ? 2160 : 1080,
                 maxFrameRate: 30,
             },
         },
-    });
+    };
+
+    try {
+        return await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (error) {
+        // Some desktop surfaces refuse audio capture — retry video-only
+        console.warn("[offscreen] Capture with audio failed, retrying video-only:", error.message);
+        return navigator.mediaDevices.getUserMedia({ ...constraints, audio: false });
+    }
 }
 
 /**
@@ -167,20 +182,28 @@ async function getMicrophoneStream () {
 }
 
 /**
- * Combines the tab and microphone media streams.
- * @param {MediaStream} tabStream - The media stream for the tab.
- * @param {MediaStream} micStream - The media stream for the microphone.
- * @returns {MediaStream} - The combined media stream.
+ * Mixes whatever audio sources are available (capture audio, microphone)
+ * into a single stream alongside the capture's video track.
+ * @returns {{combinedStream: MediaStream, audioContext: AudioContext | null}}
  */
-function combineMediaStreams (tabStream, micStream) {
+function combineMediaStreams (captureStream, micStream) {
+    const videoTrack = captureStream.getVideoTracks()[0];
+    const audioSources = [captureStream, micStream].filter(
+        (stream) => stream && stream.getAudioTracks().length > 0
+    );
+
+    if (audioSources.length === 0) {
+        return { combinedStream: new MediaStream([videoTrack]), audioContext: null };
+    }
+
     const audioContext = new AudioContext();
     const audioDestination = audioContext.createMediaStreamDestination();
-
-    audioContext.createMediaStreamSource(micStream).connect(audioDestination);
-    audioContext.createMediaStreamSource(tabStream).connect(audioDestination);
+    for (const stream of audioSources) {
+        audioContext.createMediaStreamSource(stream).connect(audioDestination);
+    }
 
     const combinedStream = new MediaStream([
-        tabStream.getVideoTracks()[0],
+        videoTrack,
         audioDestination.stream.getTracks()[0],
     ]);
 
@@ -202,10 +225,11 @@ function handleDataAvailable (event) {
 async function handleRecordingStop () {
     mediaRecorder = null;
     const recordedBlob = new Blob(recordedChunks, { type: "video/webm" });
-    
-    // Generate filename with timestamp
+
+    // Generate filename with timestamp; the "screen-"/"tab-" prefix is what
+    // classifies the capture type at upload time.
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-    const filename = `recording-${timestamp}.webm`;
+    const filename = `${recordingSource === "desktop" ? "screen" : "tab"}-recording-${timestamp}.webm`;
     
     // Save to IndexedDB with unique ID
     const captureId = crypto.randomUUID();

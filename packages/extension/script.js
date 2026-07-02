@@ -20,6 +20,9 @@ const tabBtn = document.getElementById("tabBtn");
 const fullPageBtn = document.getElementById("fullPageBtn");
 const delayedTabBtn = document.getElementById("delayedTabBtn");
 const screenWindowBtn = document.getElementById("screenWindowBtn");
+const recordTabBtn = document.getElementById("recordTabBtn");
+const recordScreenBtn = document.getElementById("recordScreenBtn");
+const stopRecordingBtn = document.getElementById("stopRecordingBtn");
 const annotateImageBtn = document.getElementById("annotateImageBtn");
 const signInGoogleBtn = document.getElementById("signInGoogleBtn");
 const libraryBtn = document.getElementById("libraryBtn");
@@ -321,6 +324,22 @@ const openAnnotateImport = async () => {
   await chrome.tabs.create({ url: chrome.runtime.getURL('import-image.html') });
 };
 
+const renderRecordingState = async () => {
+  const { recording } = await chrome.storage.local.get(['recording']);
+  const isRecording = Boolean(recording);
+
+  if (recordTabBtn) recordTabBtn.hidden = isRecording;
+  if (recordScreenBtn) recordScreenBtn.hidden = isRecording;
+  if (stopRecordingBtn) stopRecordingBtn.hidden = !isRecording;
+};
+
+const sendRecordingCommand = async (message) => {
+  const response = await chrome.runtime.sendMessage(message);
+  if (response && response.success === false) {
+    throw new Error(response.error || `${message.type} failed`);
+  }
+};
+
 const updateAuthUI = async () => {
   try {
     const authenticated = await isAuthenticated();
@@ -359,6 +378,7 @@ const initializePopup = async () => {
     await attemptSessionSyncOnOpen();
     await updateAuthUI();
     await renderPopupMode();
+    await renderRecordingState();
 
     slideshowBtn?.addEventListener("click", async () => {
       const session = await ensureActiveSlideshowSession();
@@ -439,6 +459,45 @@ const initializePopup = async () => {
       } catch (error) {
         console.error("Display capture failed:", error);
         showPopupError(`Display capture failed: ${error.message}`);
+      }
+    });
+
+    recordTabBtn?.addEventListener("click", async () => {
+      try {
+        await sendRecordingCommand({ type: "start-recording", recordingType: "tab" });
+        window.close();
+      } catch (error) {
+        console.error("Tab recording failed to start:", error);
+        showPopupError(`Recording failed: ${error.message}`);
+        await renderRecordingState();
+      }
+    });
+
+    recordScreenBtn?.addEventListener("click", async () => {
+      try {
+        // Pick the screen/window here — the offscreen document records it
+        const streamId = await chooseDesktopMedia();
+        await sendRecordingCommand({
+          type: "start-recording",
+          recordingType: "screen",
+          streamId,
+        });
+        window.close();
+      } catch (error) {
+        console.error("Screen recording failed to start:", error);
+        showPopupError(`Recording failed: ${error.message}`);
+        await renderRecordingState();
+      }
+    });
+
+    stopRecordingBtn?.addEventListener("click", async () => {
+      try {
+        await sendRecordingCommand({ type: "stop-recording" });
+        window.close();
+      } catch (error) {
+        console.error("Failed to stop recording:", error);
+        showPopupError(`Stop failed: ${error.message}`);
+        await renderRecordingState();
       }
     });
 

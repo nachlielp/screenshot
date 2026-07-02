@@ -81,23 +81,28 @@ export async function hasActiveCapturingSlideshowSession() {
   return Boolean(session);
 }
 
-export async function ensureActiveSlideshowSession() {
-  const existing = await getActiveSlideshowSession();
-  if (existing) {
-    return existing;
-  }
-
+export async function createSlideshowSession({ title } = {}) {
   const now = Date.now();
   const session = {
     id: crypto.randomUUID(),
     state: 'capturing',
-    title: undefined,
+    title,
     frames: [],
     createdAt: now,
     updatedAt: now,
   };
 
   await saveSlideshowSession(session);
+  return session;
+}
+
+export async function ensureActiveSlideshowSession() {
+  const existing = await getActiveSlideshowSession();
+  if (existing) {
+    return existing;
+  }
+
+  const session = await createSlideshowSession();
   await setActiveSlideshowSessionId(session.id);
   return session;
 }

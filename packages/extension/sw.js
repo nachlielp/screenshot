@@ -264,9 +264,11 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
 
 /**
  * Starts the recording process
- * @param {string} type - The type of recording (e.g., 'tab' or 'screen')
+ * @param {string} type - The type of recording ('tab' or 'screen')
+ * @param {string|null} streamId - For screen recordings, the id returned by
+ *   desktopCapture.chooseDesktopMedia (picked in the popup).
  */
-const startRecording = async (type) => {
+const startRecording = async (type, streamId = null) => {
     console.log("Starting recording:", type);
     await updateRecordingStatus(true, type);
 
@@ -274,7 +276,18 @@ const startRecording = async (type) => {
         if (type === "tab") {
             await handleTabRecording(true);
         } else if (type === "screen") {
-            await handleScreenRecording();
+            if (!streamId) {
+                throw new Error("No screen was selected for recording");
+            }
+            await ensureOffscreenDocument();
+            await requestRuntime({
+                type: "start-recording",
+                target: "offscreen",
+                source: "desktop",
+                data: streamId,
+            });
+        } else {
+            throw new Error(`Unknown recording type: ${type}`);
         }
     } catch (error) {
         // Recording never started — roll the badge/state back so the UI is honest.
@@ -289,11 +302,9 @@ const startRecording = async (type) => {
 // Stop recording and clean up resources
 const stopRecording = async () => {
     console.log("Stopping recording");
-    const { type } = await chrome.storage.local.get(["type"]);
     await updateRecordingStatus(false, "");
-    if (type === "tab") {
-        await handleTabRecording(false);
-    }
+    // The offscreen document owns both tab and desktop recordings
+    await requestRuntime({ type: "stop-recording", target: "offscreen" });
     await endTabCapture();
 };
 
@@ -324,7 +335,12 @@ const handleTabRecording = async (start) => {
         }
 
         const mediaStreamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: activeTab.id });
-        await requestRuntime({ type: "start-recording", target: "offscreen", data: mediaStreamId });
+        await requestRuntime({
+            type: "start-recording",
+            target: "offscreen",
+            source: "tab",
+            data: mediaStreamId,
+        });
     } else {
         await requestRuntime({ type: "stop-recording", target: "offscreen" });
     }
@@ -475,44 +491,6 @@ const takeScreenshot = async (captureTarget = "tab", options = {}) => {
 };
 
 /**
- * Handles screen recording with Full HD resolution
- */
-const handleScreenRecording = async () => {
-    const screenRecordingUrl = chrome.runtime.getURL("screenRecord.html");
-    const currentTab = await getActiveTab();
-
-    const newTab = await chrome.tabs.create({
-        url: screenRecordingUrl,
-        pinned: true,
-        active: true,
-        index: 0,
-    });
-
-    setTimeout(() => {
-        chrome.tabs.sendMessage(newTab.id, {
-            type: "start-recording",
-            resolution: "1920x1080",
-            focusedTabId: currentTab?.id,
-        });
-    }, 500);
-};
-
-/**
- * Opens a new tab to play a recorded video
- * @param {Object} videoData - Video details
- * @param {string} [videoData.url] - URL of the recorded video
- * @param {string} [videoData.base64] - Base64-encoded video data
- */
-const openVideoPlaybackTab = async ({ url, base64 }) => {
-    if (!url && !base64) return;
-
-    const videoPlaybackTab = await chrome.tabs.create({ url: chrome.runtime.getURL("video.html") });
-    setTimeout(() => {
-        chrome.tabs.sendMessage(videoPlaybackTab.id, { type: "play-video", videoUrl: url, base64 });
-    }, 500);
-};
-
-/**
  * Listener for runtime messages
  */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -525,7 +503,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             console.log("Message received in service worker:", request.type);
             switch (request.type) {
                 case "start-recording":
-                    await startRecording(request.recordingType);
+                    await startRecording(request.recordingType, request.streamId || null);
                     sendResponse({ success: true });
                     break;
                 case "stop-recording":
