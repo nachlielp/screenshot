@@ -16,6 +16,14 @@ const markedView = v.object({
   items: v.array(markedItem),
 });
 
+// Indices into the console/network log arrays that the owner has hidden
+// ("cleaned up"). The log files themselves stay immutable, so markedView
+// entryIndex references remain valid and hiding is reversible.
+const hiddenLogEntries = v.object({
+  console: v.array(v.number()),
+  network: v.array(v.number()),
+});
+
 const slideshowFrame = v.object({
   storageId: v.id("_storage"),
   publicUrl: v.string(),
@@ -84,6 +92,7 @@ export default defineSchema({
     viewerTokens: v.optional(v.array(v.string())),
     lastViewedAt: v.optional(v.number()),
     markedView: v.optional(markedView),
+    hiddenLogEntries: v.optional(hiddenLogEntries),
   })
     .index("by_userId", ["userId"])
     .index("by_shareToken", ["shareToken"])

@@ -1362,3 +1362,63 @@
     min-height: 280px;
   }
 }
+
+/* Log cleanup (multi-select + hide) */
+.sv-cleanup-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  padding: 8px 0;
+  flex-wrap: wrap;
+}
+
+.sv-cleanup-btn {
+  padding: 6px 12px;
+  font-size: 12.5px;
+  box-shadow: none;
+}
+
+.sv-cleanup-btn.active {
+  background: #fef3c7;
+  border-color: #f59e0b;
+  color: #92400e;
+}
+
+.sv-cleanup-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.sv-cleanup-checkbox {
+  width: 15px;
+  height: 15px;
+  accent-color: #f59e0b;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+
+.sv-console-entry.is-selected,
+.sv-network-row.is-selected td {
+  background: #fef9e7 !important;
+}
+
+.sv-console-entry.is-hidden-entry,
+.sv-network-row.is-hidden-entry td {
+  opacity: 0.45;
+}
+
+.sv-console-entry.is-hidden-entry .sv-console-args {
+  text-decoration: line-through;
+  text-decoration-color: rgba(107, 114, 128, 0.6);
+}
+
+.sv-logs-error-banner {
+  padding: 10px 18px;
+  background: #fef2f2;
+  border-bottom: 1px solid #fecaca;
+  color: #b91c1c;
+  font-size: 13px;
+}

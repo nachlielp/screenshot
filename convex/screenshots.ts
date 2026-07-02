@@ -25,6 +25,34 @@ const markedViewValidator = v.object({
   items: v.array(markedItemValidator),
 });
 
+// Load a screenshot by share token and verify the caller owns it.
+async function requireOwnedScreenshot(ctx: MutationCtx, shareToken: string) {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) {
+    throw new Error("Not authenticated");
+  }
+
+  const screenshot = await ctx.db
+    .query("screenshots")
+    .withIndex("by_shareToken", (q) => q.eq("shareToken", shareToken))
+    .first();
+
+  if (!screenshot || screenshot.expiresAt < Date.now()) {
+    throw new Error("Snapshot not found");
+  }
+
+  const user = await ctx.db
+    .query("users")
+    .withIndex("by_clerkId", (q) => q.eq("clerkId", identity.subject))
+    .first();
+
+  if (!user || screenshot.userId !== user._id) {
+    throw new Error("Not authorized");
+  }
+
+  return screenshot;
+}
+
 // Generate a random share token
 function generateShareToken(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(16)))
@@ -357,28 +385,7 @@ export const updateScreenshotTitle = mutation({
     title: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Not authenticated");
-    }
-
-    const screenshot = await ctx.db
-      .query("screenshots")
-      .withIndex("by_shareToken", (q) => q.eq("shareToken", args.shareToken))
-      .first();
-
-    if (!screenshot || screenshot.expiresAt < Date.now()) {
-      throw new Error("Snapshot not found");
-    }
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerkId", (q) => q.eq("clerkId", identity.subject))
-      .first();
-
-    if (!user || screenshot.userId !== user._id) {
-      throw new Error("Not authorized");
-    }
+    const screenshot = await requireOwnedScreenshot(ctx, args.shareToken);
 
     const nextTitle = normalizeScreenshotTitle(args.title);
     await ctx.db.patch(screenshot._id, {
@@ -395,28 +402,7 @@ export const saveMarkedView = mutation({
     markedView: markedViewValidator,
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Not authenticated");
-    }
-
-    const screenshot = await ctx.db
-      .query("screenshots")
-      .withIndex("by_shareToken", (q) => q.eq("shareToken", args.shareToken))
-      .first();
-
-    if (!screenshot || screenshot.expiresAt < Date.now()) {
-      throw new Error("Snapshot not found");
-    }
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerkId", (q) => q.eq("clerkId", identity.subject))
-      .first();
-
-    if (!user || screenshot.userId !== user._id) {
-      throw new Error("Not authorized");
-    }
+    const screenshot = await requireOwnedScreenshot(ctx, args.shareToken);
 
     const normalizedItems = [...args.markedView.items]
       .sort((a, b) => a.order - b.order)
@@ -442,6 +428,68 @@ export const saveMarkedView = mutation({
     });
 
     return nextMarkedView ?? null;
+  },
+});
+
+// Hide (or unhide) individual console/network log entries. The uploaded log
+// files stay immutable — this only records which entry indices the owner
+// cleaned up, so it is reversible and markedView indices stay valid.
+export const setHiddenLogEntries = mutation({
+  args: {
+    shareToken: v.string(),
+    hiddenLogEntries: v.object({
+      console: v.array(v.number()),
+      network: v.array(v.number()),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const screenshot = await requireOwnedScreenshot(ctx, args.shareToken);
+
+    const normalize = (indices: number[]) =>
+      [...new Set(indices.map((i) => Math.max(0, Math.floor(i))))].sort(
+        (a, b) => a - b
+      );
+
+    const consoleHidden = normalize(args.hiddenLogEntries.console);
+    const networkHidden = normalize(args.hiddenLogEntries.network);
+
+    const nextHidden =
+      consoleHidden.length === 0 && networkHidden.length === 0
+        ? undefined
+        : { console: consoleHidden, network: networkHidden };
+
+    // Marked highlights pointing at hidden entries no longer make sense — prune them.
+    let nextMarkedView = screenshot.markedView;
+    if (nextHidden && nextMarkedView) {
+      const hiddenBySource = {
+        console: new Set(consoleHidden),
+        network: new Set(networkHidden),
+      };
+      const remainingItems = nextMarkedView.items.filter(
+        (item) => !hiddenBySource[item.source].has(item.entryIndex)
+      );
+
+      if (remainingItems.length !== nextMarkedView.items.length) {
+        nextMarkedView =
+          remainingItems.length === 0
+            ? undefined
+            : {
+                version: 1 as const,
+                updatedAt: Date.now(),
+                items: remainingItems.map((item, index) => ({
+                  ...item,
+                  order: index + 1,
+                })),
+              };
+      }
+    }
+
+    await ctx.db.patch(screenshot._id, {
+      hiddenLogEntries: nextHidden,
+      markedView: nextMarkedView,
+    });
+
+    return nextHidden ?? null;
   },
 });
 

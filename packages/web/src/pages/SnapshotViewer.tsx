@@ -46,6 +46,11 @@ interface MarkedView {
   items: MarkedItem[];
 }
 
+interface HiddenLogEntries {
+  console: number[];
+  network: number[];
+}
+
 interface HighlightItem extends MarkedItem {
   summary: string;
   subtitle: string;
@@ -70,6 +75,7 @@ export default function SnapshotViewer() {
   );
   const incrementView = useMutation(api.screenshots.incrementViewCount);
   const persistMarkedView = useMutation(api.screenshots.saveMarkedView);
+  const persistHiddenEntries = useMutation(api.screenshots.setHiddenLogEntries);
   const updateScreenshotTitle = useMutation(api.screenshots.updateScreenshotTitle);
   const viewIncremented = useRef(false);
   const initialViewSetRef = useRef(false);
@@ -97,6 +103,13 @@ export default function SnapshotViewer() {
   const [markNotice, setMarkNotice] = useState<string | null>(null);
   const [showAllConsoleEntries, setShowAllConsoleEntries] = useState(true);
   const [showAllNetworkEntries, setShowAllNetworkEntries] = useState(true);
+  const [cleanupMode, setCleanupMode] = useState(false);
+  const [selectedConsole, setSelectedConsole] = useState<Set<number>>(new Set());
+  const [selectedNetwork, setSelectedNetwork] = useState<Set<number>>(new Set());
+  const [showHiddenEntries, setShowHiddenEntries] = useState(false);
+  const [isSavingHidden, setIsSavingHidden] = useState(false);
+  const [consoleLogsError, setConsoleLogsError] = useState(false);
+  const [networkLogsError, setNetworkLogsError] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
   const [isSavingTitle, setIsSavingTitle] = useState(false);
@@ -115,6 +128,23 @@ export default function SnapshotViewer() {
   const [isResizing, setIsResizing] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const localImageUrlRef = useRef<string | null>(null);
+
+  const hiddenLogEntries = (screenshot &&
+    "hiddenLogEntries" in screenshot &&
+    (screenshot.hiddenLogEntries as HiddenLogEntries | undefined)) || {
+    console: [],
+    network: [],
+  };
+  const hiddenConsole = useMemo(
+    () => new Set(hiddenLogEntries.console),
+    [hiddenLogEntries.console.join(",")]
+  );
+  const hiddenNetwork = useMemo(
+    () => new Set(hiddenLogEntries.network),
+    [hiddenLogEntries.network.join(",")]
+  );
+  const hiddenCount = hiddenConsole.size + hiddenNetwork.size;
+  const selectedCount = selectedConsole.size + selectedNetwork.size;
 
   const effectiveMarkedView = markMode ? draftMarkedView : savedMarkedView;
   const highlightItems = useMemo(
@@ -181,12 +211,21 @@ export default function SnapshotViewer() {
       setHtmlContent("");
     }
 
+    setConsoleLogsError(false);
+    setNetworkLogsError(false);
+
     if (screenshot.consoleLogsUrl) {
       fetches.push(
         fetch(screenshot.consoleLogsUrl)
-          .then((r) => (r.ok ? r.json() : []))
+          .then((r) => {
+            if (!r.ok) throw new Error(`Console logs fetch failed (${r.status})`);
+            return r.json();
+          })
           .then((d) => setConsoleLogs(Array.isArray(d) ? d : []))
-          .catch(() => setConsoleLogs([]))
+          .catch(() => {
+            setConsoleLogs([]);
+            setConsoleLogsError(true);
+          })
       );
     } else {
       setConsoleLogs([]);
@@ -195,11 +234,17 @@ export default function SnapshotViewer() {
     if (screenshot.networkLogsUrl) {
       fetches.push(
         fetch(screenshot.networkLogsUrl)
-          .then((r) => (r.ok ? r.json() : []))
+          .then((r) => {
+            if (!r.ok) throw new Error(`Network logs fetch failed (${r.status})`);
+            return r.json();
+          })
           .then((d) =>
             setNetworkLogs(Array.isArray(d) ? normalizeNetworkLogs(d) : [])
           )
-          .catch(() => setNetworkLogs([]))
+          .catch(() => {
+            setNetworkLogs([]);
+            setNetworkLogsError(true);
+          })
       );
     } else {
       setNetworkLogs([]);
@@ -563,6 +608,70 @@ export default function SnapshotViewer() {
     setMarkNotice(null);
   }
 
+  const handleToggleCleanupMode = () => {
+    if (editMode || markMode || !canEdit) return;
+    setCleanupMode((current) => !current);
+    setSelectedConsole(new Set());
+    setSelectedNetwork(new Set());
+    setMarkNotice(null);
+  };
+
+  async function saveHiddenEntries(next: HiddenLogEntries, notice: string) {
+    if (!shareToken || !canEdit || isSavingHidden) return;
+
+    try {
+      setIsSavingHidden(true);
+      await persistHiddenEntries({ shareToken, hiddenLogEntries: next });
+      setSelectedConsole(new Set());
+      setSelectedNetwork(new Set());
+      setMarkNotice(notice);
+    } catch (error) {
+      console.error("Failed to update hidden log entries:", error);
+      const message = error instanceof Error ? error.message : String(error ?? "");
+      setMarkNotice(
+        message.includes("Could not find public function")
+          ? "Log cleanup needs the latest Convex functions deployed first."
+          : "We couldn’t update the logs. Please try again."
+      );
+    } finally {
+      setIsSavingHidden(false);
+    }
+  }
+
+  const handleHideSelected = () => {
+    if (selectedCount === 0) return;
+
+    const next: HiddenLogEntries = {
+      console: [...new Set([...hiddenConsole, ...selectedConsole])],
+      network: [...new Set([...hiddenNetwork, ...selectedNetwork])],
+    };
+    void saveHiddenEntries(
+      next,
+      `Hid ${selectedCount} log ${selectedCount === 1 ? "entry" : "entries"}.`
+    );
+  };
+
+  const handleUnhideSelected = () => {
+    const selectedHiddenConsole = [...selectedConsole].filter((i) => hiddenConsole.has(i));
+    const selectedHiddenNetwork = [...selectedNetwork].filter((i) => hiddenNetwork.has(i));
+    const count = selectedHiddenConsole.length + selectedHiddenNetwork.length;
+    if (count === 0) return;
+
+    const next: HiddenLogEntries = {
+      console: [...hiddenConsole].filter((i) => !selectedConsole.has(i)),
+      network: [...hiddenNetwork].filter((i) => !selectedNetwork.has(i)),
+    };
+    void saveHiddenEntries(next, `Restored ${count} log ${count === 1 ? "entry" : "entries"}.`);
+  };
+
+  const handleUnhideAll = () => {
+    if (hiddenCount === 0) return;
+    void saveHiddenEntries(
+      { console: [], network: [] },
+      "All hidden log entries restored."
+    );
+  };
+
   async function handleCopyShareLink() {
     if (!shareToken) return;
 
@@ -807,7 +916,71 @@ export default function SnapshotViewer() {
                     </button>
                   ))}
                 </div>
+                {canEdit &&
+                  (currentView === "console" || currentView === "network") && (
+                    <div className="sv-cleanup-controls">
+                      <button
+                        className={`sv-control-btn sv-cleanup-btn${cleanupMode ? " active" : ""}`}
+                        onClick={handleToggleCleanupMode}
+                        disabled={editMode || markMode || isSavingHidden}
+                        title="Select log entries to hide them from this snapshot"
+                      >
+                        {cleanupMode ? "✓ Done" : "🧹 Clean up"}
+                      </button>
+                      {cleanupMode && (
+                        <>
+                          <button
+                            className="sv-control-btn sv-cleanup-btn"
+                            onClick={handleHideSelected}
+                            disabled={selectedCount === 0 || isSavingHidden}
+                          >
+                            {isSavingHidden
+                              ? "Saving..."
+                              : `Hide selected (${selectedCount})`}
+                          </button>
+                          {showHiddenEntries && hiddenCount > 0 && (
+                            <button
+                              className="sv-control-btn sv-cleanup-btn"
+                              onClick={handleUnhideSelected}
+                              disabled={selectedCount === 0 || isSavingHidden}
+                            >
+                              Unhide selected
+                            </button>
+                          )}
+                          {hiddenCount > 0 && (
+                            <button
+                              className="sv-control-btn sv-cleanup-btn"
+                              onClick={handleUnhideAll}
+                              disabled={isSavingHidden}
+                            >
+                              Unhide all ({hiddenCount})
+                            </button>
+                          )}
+                        </>
+                      )}
+                      {hiddenCount > 0 && (
+                        <button
+                          className="sv-control-btn sv-cleanup-btn"
+                          onClick={() => setShowHiddenEntries((c) => !c)}
+                        >
+                          {showHiddenEntries
+                            ? "Conceal hidden"
+                            : `Show hidden (${hiddenCount})`}
+                        </button>
+                      )}
+                    </div>
+                  )}
               </div>
+
+              {(consoleLogsError || networkLogsError) && (
+                <div className="sv-logs-error-banner">
+                  {consoleLogsError && networkLogsError
+                    ? "Console and network logs couldn’t be loaded. Check your connection and reload."
+                    : consoleLogsError
+                      ? "Console logs couldn’t be loaded. Check your connection and reload."
+                      : "Network logs couldn’t be loaded. Check your connection and reload."}
+                </div>
+              )}
 
               <div className="sv-tab-content">
                 {currentView === "info" && (
@@ -849,6 +1022,11 @@ export default function SnapshotViewer() {
                     onMark={handleMarkItem}
                     onUnmark={handleRemoveMarkedItem}
                     onActivateMarkedId={setActiveMarkedId}
+                    cleanupMode={cleanupMode && canEdit}
+                    selectedIndices={selectedConsole}
+                    onSelectionChange={setSelectedConsole}
+                    hiddenIndices={hiddenConsole}
+                    showHidden={showHiddenEntries}
                   />
                 )}
                 {currentView === "network" && (
@@ -870,6 +1048,11 @@ export default function SnapshotViewer() {
                     onMark={handleMarkItem}
                     onUnmark={handleRemoveMarkedItem}
                     onActivateMarkedId={setActiveMarkedId}
+                    cleanupMode={cleanupMode && canEdit}
+                    selectedIndices={selectedNetwork}
+                    onSelectionChange={setSelectedNetwork}
+                    hiddenIndices={hiddenNetwork}
+                    showHidden={showHiddenEntries}
                   />
                 )}
               </div>
@@ -1069,6 +1252,11 @@ function ConsolePanel({
   onMark,
   onUnmark,
   onActivateMarkedId,
+  cleanupMode,
+  selectedIndices,
+  onSelectionChange,
+  hiddenIndices,
+  showHidden,
 }: {
   logs: ConsoleEntry[];
   filter: string;
@@ -1083,8 +1271,14 @@ function ConsolePanel({
   onMark: (source: MarkedSource, entryIndex: number) => void;
   onUnmark: (itemId: string) => void;
   onActivateMarkedId: (itemId: string) => void;
+  cleanupMode: boolean;
+  selectedIndices: Set<number>;
+  onSelectionChange: (next: Set<number>) => void;
+  hiddenIndices: Set<number>;
+  showHidden: boolean;
 }) {
   const rowRefs = useRef(new Map<number, HTMLDivElement>());
+  const selectionAnchorRef = useRef<number | null>(null);
   const filters = ["all", "log", "warn", "error", "info", "debug"];
   const markedCount = markedEntries.size;
 
@@ -1095,6 +1289,7 @@ function ConsolePanel({
         entryIndex,
         markedItem: markedEntries.get(entryIndex) ?? null,
       }))
+      .filter(({ entryIndex }) => showHidden || !hiddenIndices.has(entryIndex))
       .filter(({ entry }) => filter === "all" || entry.level === filter);
 
     if (markedCount === 0) {
@@ -1113,7 +1308,7 @@ function ConsolePanel({
       if (b.markedItem) return 1;
       return a.entryIndex - b.entryIndex;
     });
-  }, [logs, filter, markedEntries, markedCount, showAllEntries]);
+  }, [logs, filter, markedEntries, markedCount, showAllEntries, hiddenIndices, showHidden]);
 
   useEffect(() => {
     if (activeEntryIndex == null) return;
@@ -1126,6 +1321,23 @@ function ConsolePanel({
   const setRowRef = (entryIndex: number): RefCallback<HTMLDivElement> => (node) => {
     if (node) rowRefs.current.set(entryIndex, node);
     else rowRefs.current.delete(entryIndex);
+  };
+
+  // Toggle selection; shift-click selects the whole range between the last
+  // clicked row and this one, in the order rows are currently displayed.
+  const handleSelectClick = (
+    event: ReactMouseEvent,
+    entryIndex: number
+  ) => {
+    event.stopPropagation();
+    const next = applyRangeSelection(
+      selectedIndices,
+      filtered.map((row) => row.entryIndex),
+      selectionAnchorRef,
+      entryIndex,
+      event.shiftKey
+    );
+    onSelectionChange(next);
   };
 
   return (
@@ -1156,6 +1368,8 @@ function ConsolePanel({
           ) : (
             filtered.map(({ entry, entryIndex, markedItem }) => {
               const consoleText = (entry.args ?? []).join(" ");
+              const isHidden = hiddenIndices.has(entryIndex);
+              const isSelected = selectedIndices.has(entryIndex);
 
               return (
                 <div
@@ -1163,13 +1377,29 @@ function ConsolePanel({
                   ref={setRowRef(entryIndex)}
                   className={`sv-console-entry level-${entry.level}${
                     markedItem ? " is-marked" : ""
-                  }${markedItem?.id === activeMarkedId ? " is-active" : ""}`}
-                  onClick={() => {
+                  }${markedItem?.id === activeMarkedId ? " is-active" : ""}${
+                    isHidden ? " is-hidden-entry" : ""
+                  }${cleanupMode && isSelected ? " is-selected" : ""}`}
+                  onClick={(event) => {
+                    if (cleanupMode) {
+                      handleSelectClick(event, entryIndex);
+                      return;
+                    }
                     if (markedItem) {
                       onActivateMarkedId(markedItem.id);
                     }
                   }}
                 >
+                  {cleanupMode && (
+                    <input
+                      type="checkbox"
+                      className="sv-cleanup-checkbox"
+                      checked={isSelected}
+                      onClick={(event) => handleSelectClick(event, entryIndex)}
+                      onChange={() => {}}
+                      aria-label={`Select console entry ${entryIndex + 1}`}
+                    />
+                  )}
                   <div className="sv-row-actions">
                     {consoleText && (
                       <IconCopyButton
@@ -1226,6 +1456,11 @@ function NetworkPanel({
   onMark,
   onUnmark,
   onActivateMarkedId,
+  cleanupMode,
+  selectedIndices,
+  onSelectionChange,
+  hiddenIndices,
+  showHidden,
 }: {
   logs: NetworkEntry[];
   markedEntries: Map<number, HighlightItem>;
@@ -1238,7 +1473,13 @@ function NetworkPanel({
   onMark: (source: MarkedSource, entryIndex: number) => void;
   onUnmark: (itemId: string) => void;
   onActivateMarkedId: (itemId: string) => void;
+  cleanupMode: boolean;
+  selectedIndices: Set<number>;
+  onSelectionChange: (next: Set<number>) => void;
+  hiddenIndices: Set<number>;
+  showHidden: boolean;
 }) {
+  const selectionAnchorRef = useRef<number | null>(null);
   const [expandedEntryIndex, setExpandedEntryIndex] = useState<number | null>(null);
   const [detailTab, setDetailTab] = useState<Record<number, string>>({});
   const [searchQuery, setSearchQuery] = useState("");
@@ -1313,6 +1554,7 @@ function NetworkPanel({
         resourceType: getResourceType(entry),
         initiator: getInitiator(entry),
       }))
+      .filter(({ entryIndex }) => showHidden || !hiddenIndices.has(entryIndex))
       .filter(({ entry, resourceType }) => {
         if (
           searchQuery &&
@@ -1397,7 +1639,21 @@ function NetworkPanel({
     statusFilter,
     markedCount,
     showAllEntries,
+    hiddenIndices,
+    showHidden,
   ]);
+
+  const handleSelectClick = (event: ReactMouseEvent, entryIndex: number) => {
+    event.stopPropagation();
+    const next = applyRangeSelection(
+      selectedIndices,
+      filteredLogs.map((row) => row.entryIndex),
+      selectionAnchorRef,
+      entryIndex,
+      event.shiftKey
+    );
+    onSelectionChange(next);
+  };
 
   const totalSize = filteredLogs.reduce((sum, row) => sum + (row.entry.size ?? 0), 0);
   const avgDuration = filteredLogs.length
@@ -1421,7 +1677,7 @@ function NetworkPanel({
   ];
   const methodOptions = ["All", ...Array.from(new Set(logs.map((log) => log.method)))];
   const statusOptions = ["All", "2xx", "3xx", "4xx", "5xx"];
-  const columnSpan = markMode && canEdit ? 8 : 7;
+  const columnSpan = 7 + (markMode && canEdit ? 1 : 0) + (cleanupMode ? 1 : 0);
 
   const setRowRef =
     (entryIndex: number): RefCallback<HTMLTableRowElement> =>
@@ -1502,6 +1758,7 @@ function NetworkPanel({
         <table className="sv-network-table">
           <thead>
             <tr>
+              {cleanupMode && <th style={{ width: "36px" }} aria-label="Select" />}
               <th style={{ width: "52px" }}>#</th>
               <th>Name</th>
               <th style={{ width: "80px" }}>Load Time</th>
@@ -1539,6 +1796,10 @@ function NetworkPanel({
                     isActive={markedItem?.id === activeMarkedId}
                     canMark={markMode && canEdit}
                     columnSpan={columnSpan}
+                    cleanupMode={cleanupMode}
+                    isSelected={selectedIndices.has(entryIndex)}
+                    isHiddenEntry={hiddenIndices.has(entryIndex)}
+                    onSelectClick={handleSelectClick}
                     onToggle={() =>
                       setExpandedEntryIndex(isOpen ? null : entryIndex)
                     }
@@ -1576,6 +1837,10 @@ function NetworkRow({
   isActive,
   canMark,
   columnSpan,
+  cleanupMode,
+  isSelected,
+  isHiddenEntry,
+  onSelectClick,
   onToggle,
   onTabChange,
   onActivateMarkedId,
@@ -1595,6 +1860,10 @@ function NetworkRow({
   isActive: boolean;
   canMark: boolean;
   columnSpan: number;
+  cleanupMode: boolean;
+  isSelected: boolean;
+  isHiddenEntry: boolean;
+  onSelectClick: (event: ReactMouseEvent, entryIndex: number) => void;
   onToggle: () => void;
   onTabChange: (tab: string) => void;
   onActivateMarkedId: (itemId: string) => void;
@@ -1638,14 +1907,32 @@ function NetworkRow({
         ref={rowRef}
         className={`sv-network-row${isError ? " status-error" : ""}${
           markedItem ? " is-marked" : ""
-        }${isActive ? " is-active" : ""}`}
-        onClick={() => {
+        }${isActive ? " is-active" : ""}${isHiddenEntry ? " is-hidden-entry" : ""}${
+          cleanupMode && isSelected ? " is-selected" : ""
+        }`}
+        onClick={(event) => {
+          if (cleanupMode) {
+            onSelectClick(event, entryIndex);
+            return;
+          }
           if (markedItem) {
             onActivateMarkedId(markedItem.id);
           }
           onToggle();
         }}
       >
+        {cleanupMode && (
+          <td style={{ textAlign: "center" }}>
+            <input
+              type="checkbox"
+              className="sv-cleanup-checkbox"
+              checked={isSelected}
+              onClick={(event) => onSelectClick(event, entryIndex)}
+              onChange={() => {}}
+              aria-label={`Select request ${entryIndex + 1}`}
+            />
+          </td>
+        )}
         <td style={{ textAlign: "center" }}>
           {markedItem ? (
             <span className="sv-inline-badge">{markedItem.order}</span>
@@ -1949,6 +2236,43 @@ function markedViewSignature(markedView: MarkedView) {
 
 function buildMarkedItemId(source: MarkedSource, entryIndex: number) {
   return `${source}:${entryIndex}`;
+}
+
+/**
+ * Toggle `clickedIndex` in the selection. With shift held, select the whole
+ * range between the anchor (last plain click) and the clicked row, using
+ * `visibleOrder` — the entry indices in their current on-screen order.
+ */
+function applyRangeSelection(
+  current: Set<number>,
+  visibleOrder: number[],
+  anchorRef: { current: number | null },
+  clickedIndex: number,
+  shiftKey: boolean
+): Set<number> {
+  const next = new Set(current);
+
+  if (shiftKey && anchorRef.current !== null) {
+    const anchorPos = visibleOrder.indexOf(anchorRef.current);
+    const clickedPos = visibleOrder.indexOf(clickedIndex);
+
+    if (anchorPos !== -1 && clickedPos !== -1) {
+      const [from, to] =
+        anchorPos <= clickedPos ? [anchorPos, clickedPos] : [clickedPos, anchorPos];
+      for (let pos = from; pos <= to; pos += 1) {
+        next.add(visibleOrder[pos]);
+      }
+      return next;
+    }
+  }
+
+  if (next.has(clickedIndex)) {
+    next.delete(clickedIndex);
+  } else {
+    next.add(clickedIndex);
+  }
+  anchorRef.current = clickedIndex;
+  return next;
 }
 
 function clampPercent(value: number) {
