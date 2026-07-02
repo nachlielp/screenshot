@@ -40,6 +40,26 @@ const POPUP_HIDE_SETTLE_MS = 75;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Lightweight error toast so failures are visible instead of dying in the console
+let toastTimer = null;
+const showPopupError = (message) => {
+  let toast = document.getElementById('popup-error-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'popup-error-toast';
+    toast.style.cssText = [
+      'position:fixed', 'left:8px', 'right:8px', 'bottom:8px', 'z-index:9999',
+      'background:#7f1d1d', 'color:#fecaca', 'border:1px solid #b91c1c',
+      'border-radius:8px', 'padding:8px 12px', 'font-size:12px', 'line-height:1.4',
+    ].join(';');
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.style.display = 'block';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toast.style.display = 'none'; }, 6000);
+};
+
 const canvasToBlob = (canvas) => (
   new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
@@ -283,7 +303,7 @@ const takeTabScreenshot = async ({ includeLogs, fullPage, delayMs = 0, slideshow
     await sleep(delayMs);
   }
 
-  await chrome.runtime.sendMessage({
+  const response = await chrome.runtime.sendMessage({
     type: "take-screenshot",
     target: "service-worker",
     captureTarget: "tab",
@@ -291,6 +311,10 @@ const takeTabScreenshot = async ({ includeLogs, fullPage, delayMs = 0, slideshow
     fullPage,
     slideshowSessionId,
   });
+
+  if (response && response.success === false) {
+    throw new Error(response.error || 'Screenshot failed');
+  }
 };
 
 const openAnnotateImport = async () => {
@@ -358,6 +382,7 @@ const initializePopup = async () => {
         window.close();
       } catch (error) {
         console.error("Slideshow screenshot capture failed:", error);
+        showPopupError(`Slideshow capture failed: ${error.message}`);
       }
     });
 
@@ -376,13 +401,23 @@ const initializePopup = async () => {
     });
 
     tabBtn?.addEventListener("click", async () => {
-      await takeTabScreenshot({ includeLogs: true, fullPage: false });
-      window.close();
+      try {
+        await takeTabScreenshot({ includeLogs: true, fullPage: false });
+        window.close();
+      } catch (error) {
+        console.error("Tab capture failed:", error);
+        showPopupError(`Screenshot failed: ${error.message}`);
+      }
     });
 
     fullPageBtn?.addEventListener("click", async () => {
-      await takeTabScreenshot({ includeLogs: false, fullPage: true });
-      window.close();
+      try {
+        await takeTabScreenshot({ includeLogs: false, fullPage: true });
+        window.close();
+      } catch (error) {
+        console.error("Full page capture failed:", error);
+        showPopupError(`Full page capture failed: ${error.message}`);
+      }
     });
 
     delayedTabBtn?.addEventListener("click", async () => {
@@ -392,6 +427,7 @@ const initializePopup = async () => {
         window.close();
       } catch (error) {
         console.error("Delayed tab capture failed:", error);
+        showPopupError(`Delayed capture failed: ${error.message}`);
         resetCountdown(delayedTabBtn);
       }
     });
@@ -402,6 +438,7 @@ const initializePopup = async () => {
         window.close();
       } catch (error) {
         console.error("Display capture failed:", error);
+        showPopupError(`Display capture failed: ${error.message}`);
       }
     });
 

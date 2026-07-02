@@ -7,6 +7,39 @@
   const MAX_CONSOLE_PREVIEW_SIZE = 10240; // Keep console serialization bounded
   const MAX_LOG_ARGS = 20;
   const MAX_ENTRIES = 500;
+  const MAX_BODY_CAPTURE_SIZE = 65536; // Cap request/response body capture at 64KB
+
+  function capText(text) {
+    if (typeof text !== 'string') return text;
+    return text.length > MAX_BODY_CAPTURE_SIZE
+      ? text.slice(0, MAX_BODY_CAPTURE_SIZE) + `… [truncated, ${text.length} chars total]`
+      : text;
+  }
+
+  // Read at most MAX_BODY_CAPTURE_SIZE characters from a Response without
+  // buffering the whole body — large payloads froze the page here before.
+  async function readResponseTextCapped(response) {
+    const reader = response.body?.getReader?.();
+    if (!reader) return capText(await response.text());
+
+    const decoder = new TextDecoder('utf-8', { fatal: false });
+    let out = '';
+    let truncated = false;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      out += decoder.decode(value, { stream: true });
+      if (out.length > MAX_BODY_CAPTURE_SIZE) {
+        truncated = true;
+        reader.cancel().catch(() => {});
+        break;
+      }
+    }
+    if (truncated) {
+      return out.slice(0, MAX_BODY_CAPTURE_SIZE) + '… [truncated]';
+    }
+    return out + decoder.decode();
+  }
 
   // ── Console capture ──────────────────────────────────────────────────
   const consoleLogs = [];
@@ -70,8 +103,8 @@
 
   async function readBodyContent(body, contentType = '') {
     if (!body) return null;
-    if (typeof body === 'string') return body;
-    if (body instanceof URLSearchParams) return body.toString();
+    if (typeof body === 'string') return capText(body);
+    if (body instanceof URLSearchParams) return capText(body.toString());
     if (body instanceof FormData) {
       const parts = [];
       body.forEach((v, k) => parts.push(`${k}=${v instanceof File ? `[File: ${v.name}]` : v}`));
@@ -79,10 +112,10 @@
     }
     if (body instanceof Blob) {
       try {
-        if (contentType && !looksTextLike(contentType)) {
+        if ((contentType && !looksTextLike(contentType)) || body.size > MAX_BODY_CAPTURE_SIZE * 4) {
           return `[Blob ${contentType || body.type || 'binary'} ${body.size} bytes]`;
         }
-        return await body.text();
+        return capText(await body.text());
       } catch { return '[Blob]'; }
     }
     if (body instanceof ArrayBuffer || ArrayBuffer.isView(body)) {
@@ -156,14 +189,23 @@
       entry.statusText = response.statusText;
       entry.responseHeaders = headersToObj(response.headers);
 
-      // Read the full response body for text-like payloads without consuming the original
+      // Read a capped response body for text-like payloads without consuming the original
       try {
         const clone = response.clone();
         const contentType = response.headers.get('content-type') || '';
+        const contentLength = Number(response.headers.get('content-length')) || 0;
         if (looksTextLike(contentType)) {
-          const text = await clone.text();
-          entry.responseBody = text;
-          entry.size = text.length;
+          if (contentLength > MAX_BODY_CAPTURE_SIZE * 4) {
+            entry.responseBody = `[${contentType} ${contentLength} bytes — too large to capture]`;
+            entry.size = contentLength;
+          } else {
+            const text = await readResponseTextCapped(clone);
+            entry.responseBody = text;
+            entry.size = contentLength || text.length;
+          }
+        } else if (contentLength) {
+          entry.responseBody = `[${contentType || 'binary response'} ${contentLength} bytes]`;
+          entry.size = contentLength;
         } else {
           const blob = await clone.blob();
           entry.responseBody = `[${contentType || 'binary response'} ${blob.size} bytes]`;
@@ -210,7 +252,7 @@
     if (meta) {
       meta.startTime = performance.now();
       if (body != null) {
-        meta.requestBody = typeof body === 'string' ? body : '[binary]';
+        meta.requestBody = typeof body === 'string' ? capText(body) : '[binary]';
       }
 
       this.addEventListener('loadend', function () {
@@ -241,14 +283,14 @@
           }
         } catch { /* ignore */ }
 
-        // Capture the full response body for text-like payloads
+        // Capture a capped response body for text-like payloads
         try {
           if (this.responseType === '' || this.responseType === 'text') {
-            entry.responseBody = this.responseText;
+            entry.responseBody = capText(this.responseText);
             entry.size = this.responseText.length;
           } else if (this.responseType === 'json') {
             const json = JSON.stringify(this.response);
-            entry.responseBody = json;
+            entry.responseBody = capText(json);
             entry.size = json.length;
           }
         } catch { /* ignore */ }

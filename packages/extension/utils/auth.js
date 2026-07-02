@@ -219,6 +219,16 @@ export async function getAuthToken() {
   }
 }
 
+// Force-refresh the Convex token, ignoring any cached value.
+// Used when a request comes back 401 despite a token that looked valid.
+export async function refreshAuthToken() {
+  await initializeAuth();
+  if (currentUser) {
+    currentUser.tokenExpiry = 0;
+  }
+  return getAuthToken();
+}
+
 // Get a Convex-specific JWT from Clerk's Frontend API
 async function getConvexToken(sessionId) {
   try {

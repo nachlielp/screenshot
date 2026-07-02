@@ -1,5 +1,5 @@
 // Convex client for Chrome Extension
-import { getAuthToken, getCurrentUser, isAuthenticated } from './auth.js';
+import { getAuthToken, refreshAuthToken, getCurrentUser, isAuthenticated } from './auth.js';
 import { getRuntimeConfig } from './runtime-config.js';
 
 function compactObject(obj) {
@@ -40,6 +40,63 @@ async function getFriendlyConvexAuthError(status, errorBody, token) {
   ].join(" ");
 }
 
+/**
+ * Single entry point for Convex HTTP API calls.
+ * Fetches a fresh token per call (tokens expire in ~60s, so a token minted at
+ * the start of a long upload is stale by the time the final mutation runs)
+ * and retries once on 401 after a forced refresh.
+ */
+async function convexCall(kind, path, args, { authenticated = true } = {}) {
+  const { convexUrl } = await getRuntimeConfig();
+
+  const doFetch = async (token) => {
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    return fetch(`${convexUrl}/api/${kind}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ path, args }),
+    });
+  };
+
+  let token = null;
+  if (authenticated) {
+    token = await getAuthToken();
+    if (!token) {
+      throw new Error('You must be signed in');
+    }
+  }
+
+  let response = await doFetch(token);
+
+  if (response.status === 401 && authenticated) {
+    console.warn(`Convex call ${path} got 401, refreshing token and retrying once`);
+    token = await refreshAuthToken();
+    if (token) {
+      response = await doFetch(token);
+    }
+  }
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    console.error(`Convex ${kind} ${path} failed:`, response.status, errorBody);
+    const friendlyError = await getFriendlyConvexAuthError(response.status, errorBody, token);
+    throw new Error(friendlyError || `Convex ${path} failed: ${response.status} - ${errorBody}`);
+  }
+
+  return response.json();
+}
+
+export async function convexMutation(path, args, options) {
+  return convexCall('mutation', path, args, options);
+}
+
+export async function convexQuery(path, args, options) {
+  return convexCall('query', path, args, options);
+}
+
 function getUploadArgs(storageId, consoleLogsStorageId, networkLogsStorageId, filename, mimeType, blob, type, metadata, deviceMeta) {
   return compactObject({
     storageId,
@@ -74,55 +131,22 @@ function getExtraFieldFromConvexError(errorMessage) {
   return match?.[1] || null;
 }
 
-async function ensureConvexUser(convexUrl, token, user) {
-  const userResponse = await fetch(`${convexUrl}/api/mutation`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      path: 'screenshots:getOrCreateUser',
-      args: {
-        clerkId: user.id,
-        email: user.primaryEmailAddress?.emailAddress || user.emailAddresses?.[0]?.emailAddress || user.email || '',
-        name: user.fullName || user.firstName || undefined,
-      },
-    }),
+async function ensureConvexUser(user) {
+  await convexMutation('screenshots:getOrCreateUser', {
+    clerkId: user.id,
+    email: user.primaryEmailAddress?.emailAddress || user.emailAddresses?.[0]?.emailAddress || user.email || '',
+    name: user.fullName || user.firstName || undefined,
   });
-
-  if (!userResponse.ok) {
-    const errorBody = await userResponse.text();
-    console.error('Convex mutation failed:', userResponse.status, errorBody);
-    const friendlyError = await getFriendlyConvexAuthError(userResponse.status, errorBody, token);
-    throw new Error(
-      friendlyError || `Failed to create/get user in Convex: ${userResponse.status} - ${errorBody}`
-    );
-  }
 }
 
-async function getStorageUploadUrl(convexUrl, token) {
-  const uploadUrlResponse = await fetch(`${convexUrl}/api/mutation`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      path: 'screenshots:generateUploadUrl',
-      args: {},
-    }),
-  });
+/**
+ * Uploads a blob to Convex storage and returns its storage id.
+ * Generates a fresh upload URL (and token) right before the upload so long
+ * multi-file uploads don't outlive the auth token.
+ */
+export async function uploadBlobToStorage(blob, mimeType) {
+  const { value: uploadUrl } = await convexMutation('screenshots:generateUploadUrl', {});
 
-  if (!uploadUrlResponse.ok) {
-    throw new Error('Failed to generate upload URL');
-  }
-
-  const { value: uploadUrl } = await uploadUrlResponse.json();
-  return uploadUrl;
-}
-
-async function uploadBlobToStorage(uploadUrl, blob, mimeType) {
   const uploadResponse = await fetch(uploadUrl, {
     method: 'POST',
     body: blob,
@@ -139,51 +163,49 @@ async function uploadBlobToStorage(uploadUrl, blob, mimeType) {
   return storageId;
 }
 
+/**
+ * Serializes an array of log entries to JSON and uploads it to storage.
+ * Returns the storage id, or undefined when the upload fails (logs are
+ * best-effort — the capture itself should still be saved).
+ */
+async function uploadLogsToStorage(entries, label) {
+  if (!entries || entries.length === 0) {
+    return undefined;
+  }
+
+  try {
+    const blob = new Blob([JSON.stringify(entries)], { type: 'application/json' });
+    const storageId = await uploadBlobToStorage(blob, 'application/json');
+    console.log(`${label} logs uploaded:`, storageId);
+    return storageId;
+  } catch (error) {
+    console.error(`Error uploading ${label} logs (continuing without them):`, error);
+    return undefined;
+  }
+}
+
 async function getAuthenticatedConvexContext() {
   const authenticated = await isAuthenticated();
   if (!authenticated) {
     throw new Error('You must be signed in to upload');
   }
 
-  const { convexUrl } = await getRuntimeConfig();
   const user = await getCurrentUser();
-  const token = await getAuthToken();
-
-  if (!user || !token) {
+  if (!user) {
     throw new Error('Failed to get authentication credentials');
   }
 
-  await ensureConvexUser(convexUrl, token, user);
+  await ensureConvexUser(user);
 
-  return { convexUrl, token, user };
+  return { user };
 }
 
-async function createScreenshotRecord(token, args) {
-  const { convexUrl } = await getRuntimeConfig();
+async function createScreenshotRecord(args) {
   const ignoredFields = [];
   let currentArgs = { ...args };
 
   while (true) {
-    const screenshotResponse = await fetch(`${convexUrl}/api/mutation`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        path: 'screenshots:uploadScreenshot',
-        args: currentArgs,
-      }),
-    });
-
-    if (!screenshotResponse.ok) {
-      const errorBody = await screenshotResponse.text();
-      console.error('Screenshot record failed:', screenshotResponse.status, errorBody);
-      throw new Error('Failed to create screenshot record');
-    }
-
-    const screenshotData = await screenshotResponse.json();
-    console.log('Screenshot response data:', JSON.stringify(screenshotData));
+    const screenshotData = await convexMutation('screenshots:uploadScreenshot', currentArgs);
 
     if (screenshotData.status !== 'error') {
       if (ignoredFields.length > 0) {
@@ -215,102 +237,13 @@ async function createScreenshotRecord(token, args) {
  */
 export async function uploadToConvex(blob, filename, mimeType, type, metadata = {}, consoleLogs = null, networkLogs = null, deviceMeta = null) {
   try {
-    const { convexUrl, token, user } = await getAuthenticatedConvexContext();
-    
-    console.log('Upload auth - user:', user.email, 'token length:', token?.length, 'token prefix:', token?.substring(0, 20));
-    
-    // Debug: decode and log the JWT payload
-    try {
-      const parts = token.split('.');
-      if (parts.length === 3) {
-        const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-        console.log('JWT claims:', JSON.stringify(payload, null, 2));
-        console.log('JWT issuer:', payload.iss);
-        console.log('JWT audience:', payload.aud);
-        console.log('JWT subject:', payload.sub);
-        console.log('JWT exp:', new Date(payload.exp * 1000).toISOString());
-      }
-    } catch (e) {
-      console.log('Could not decode JWT:', e);
-    }
+    const { user } = await getAuthenticatedConvexContext();
+    console.log('Uploading as:', user.email);
 
-    const uploadUrl = await getStorageUploadUrl(convexUrl, token);
+    const storageId = await uploadBlobToStorage(blob, mimeType);
+    const consoleLogsStorageId = await uploadLogsToStorage(consoleLogs, 'Console');
+    const networkLogsStorageId = await uploadLogsToStorage(networkLogs, 'Network');
 
-    const storageId = await uploadBlobToStorage(uploadUrl, blob, mimeType);
-    
-    // Step 3.5: Upload console logs if provided
-    let consoleLogsStorageId = undefined;
-    if (consoleLogs && consoleLogs.length > 0) {
-      try {
-        const consoleUploadUrlResponse = await fetch(`${convexUrl}/api/mutation`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            path: 'screenshots:generateUploadUrl',
-            args: {},
-          }),
-        });
-
-        if (consoleUploadUrlResponse.ok) {
-          const { value: consoleUploadUrl } = await consoleUploadUrlResponse.json();
-          const consoleBlob = new Blob([JSON.stringify(consoleLogs)], { type: 'application/json' });
-          const consoleUploadResponse = await fetch(consoleUploadUrl, {
-            method: 'POST',
-            body: consoleBlob,
-            headers: { 'Content-Type': 'application/json' },
-          });
-
-          if (consoleUploadResponse.ok) {
-            const consoleResult = await consoleUploadResponse.json();
-            consoleLogsStorageId = consoleResult.storageId;
-            console.log('Console logs uploaded:', consoleLogsStorageId);
-          }
-        }
-      } catch (consoleError) {
-        console.error('Error uploading console logs (continuing without them):', consoleError);
-      }
-    }
-
-    // Step 3.6: Upload network logs if provided
-    let networkLogsStorageId = undefined;
-    if (networkLogs && networkLogs.length > 0) {
-      try {
-        const networkUploadUrlResponse = await fetch(`${convexUrl}/api/mutation`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            path: 'screenshots:generateUploadUrl',
-            args: {},
-          }),
-        });
-
-        if (networkUploadUrlResponse.ok) {
-          const { value: networkUploadUrl } = await networkUploadUrlResponse.json();
-          const networkBlob = new Blob([JSON.stringify(networkLogs)], { type: 'application/json' });
-          const networkUploadResponse = await fetch(networkUploadUrl, {
-            method: 'POST',
-            body: networkBlob,
-            headers: { 'Content-Type': 'application/json' },
-          });
-
-          if (networkUploadResponse.ok) {
-            const networkResult = await networkUploadResponse.json();
-            networkLogsStorageId = networkResult.storageId;
-            console.log('Network logs uploaded:', networkLogsStorageId);
-          }
-        }
-      } catch (networkError) {
-        console.error('Error uploading network logs (continuing without them):', networkError);
-      }
-    }
-
-    // Step 4: Create screenshot record in database
     const screenshotArgs = getUploadArgs(
       storageId,
       consoleLogsStorageId,
@@ -322,8 +255,8 @@ export async function uploadToConvex(blob, filename, mimeType, type, metadata = 
       metadata,
       deviceMeta
     );
-    const screenshotData = await createScreenshotRecord(token, screenshotArgs);
-    
+    const screenshotData = await createScreenshotRecord(screenshotArgs);
+
     // Convex HTTP API returns { status: "success", value: ... } or just the value
     const result = screenshotData.value || screenshotData;
 
@@ -349,7 +282,7 @@ export async function uploadSlideshowToConvex(session) {
   }
 
   try {
-    const { convexUrl, token } = await getAuthenticatedConvexContext();
+    await getAuthenticatedConvexContext();
     const uploadedFrames = [];
 
     for (const frame of session.frames) {
@@ -362,8 +295,7 @@ export async function uploadSlideshowToConvex(session) {
         throw new Error(`Missing frame data for ${filename}`);
       }
 
-      const uploadUrl = await getStorageUploadUrl(convexUrl, token);
-      const storageId = await uploadBlobToStorage(uploadUrl, blob, mimeType);
+      const storageId = await uploadBlobToStorage(blob, mimeType);
 
       uploadedFrames.push({
         storageId,
@@ -378,27 +310,15 @@ export async function uploadSlideshowToConvex(session) {
       });
     }
 
-    const response = await fetch(`${convexUrl}/api/mutation`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        path: 'slideshows:uploadSlideshow',
-        args: {
-          title: session.title,
-          frames: uploadedFrames,
-        },
-      }),
+    const payload = await convexMutation('slideshows:uploadSlideshow', {
+      title: session.title,
+      frames: uploadedFrames,
     });
 
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`Failed to create slideshow record: ${errorBody}`);
+    if (payload.status === 'error') {
+      throw new Error(`Failed to create slideshow record: ${payload.errorMessage}`);
     }
 
-    const payload = await response.json();
     const result = payload.value || payload;
     const { siteUrl } = await getRuntimeConfig();
 
@@ -415,12 +335,6 @@ export async function uploadSlideshowToConvex(session) {
   }
 }
 
-function generateShareToken() {
-  return Array.from(crypto.getRandomValues(new Uint8Array(16)))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
 /**
  * Get screenshot by share token
  * @param {string} shareToken - The share token
@@ -428,21 +342,7 @@ function generateShareToken() {
  */
 export async function getScreenshotByToken(shareToken) {
   try {
-    const { convexUrl } = await getRuntimeConfig();
-    const response = await fetch(`${convexUrl}/api/query`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        path: 'screenshots:getScreenshotByToken',
-        args: { shareToken },
-      }),
-    });
-
-    if (!response.ok) return null;
-    
-    const { value } = await response.json();
+    const { value } = await convexQuery('screenshots:getScreenshotByToken', { shareToken }, { authenticated: false });
     return value;
   } catch (error) {
     console.error('Error getting screenshot:', error);
@@ -462,26 +362,7 @@ export async function getUserScreenshots(limit = 100) {
   }
 
   try {
-    const { convexUrl } = await getRuntimeConfig();
-    const token = await getAuthToken();
-    
-    const response = await fetch(`${convexUrl}/api/query`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        path: 'screenshots:getUserScreenshots',
-        args: { limit },
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch screenshots');
-    }
-
-    const { value } = await response.json();
+    const { value } = await convexQuery('screenshots:getUserScreenshots', { limit });
     return value || [];
   } catch (error) {
     console.error('Error getting user screenshots:', error);
@@ -500,27 +381,5 @@ export async function deleteScreenshot(screenshotId) {
     throw new Error('You must be signed in to delete');
   }
 
-  try {
-    const { convexUrl } = await getRuntimeConfig();
-    const token = await getAuthToken();
-    
-    const response = await fetch(`${convexUrl}/api/mutation`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        path: 'screenshots:deleteScreenshot',
-        args: { id: screenshotId },
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to delete screenshot');
-    }
-  } catch (error) {
-    console.error('Error deleting screenshot:', error);
-    throw error;
-  }
+  await convexMutation('screenshots:deleteScreenshot', { id: screenshotId });
 }

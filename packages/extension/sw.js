@@ -1,4 +1,5 @@
 import { saveCapture, cleanupExpiredCaptures } from './utils/db.js';
+import { requestRuntime } from './utils/messaging.js';
 import {
     appendFrameToSlideshowSession,
     hasActiveCapturingSlideshowSession,
@@ -269,10 +270,16 @@ const startRecording = async (type) => {
     console.log("Starting recording:", type);
     await updateRecordingStatus(true, type);
 
-    if (type === "tab") {
-        await handleTabRecording(true);
-    } else if (type === "screen") {
-        await handleScreenRecording();
+    try {
+        if (type === "tab") {
+            await handleTabRecording(true);
+        } else if (type === "screen") {
+            await handleScreenRecording();
+        }
+    } catch (error) {
+        // Recording never started — roll the badge/state back so the UI is honest.
+        await updateRecordingStatus(false, "");
+        throw error;
     }
 };
 
@@ -282,8 +289,11 @@ const startRecording = async (type) => {
 // Stop recording and clean up resources
 const stopRecording = async () => {
     console.log("Stopping recording");
+    const { type } = await chrome.storage.local.get(["type"]);
     await updateRecordingStatus(false, "");
-    await handleTabRecording(false);
+    if (type === "tab") {
+        await handleTabRecording(false);
+    }
     await endTabCapture();
 };
 
@@ -307,16 +317,16 @@ const endTabCapture = async () => {
 const handleTabRecording = async (start) => {
     if (start) {
         await ensureOffscreenDocument();
-    }
 
-    if (start) {
         const activeTab = await getActiveTab();
-        if (!activeTab) return;
+        if (!activeTab) {
+            throw new Error("No recordable tab found");
+        }
 
         const mediaStreamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: activeTab.id });
-        chrome.runtime.sendMessage({ type: "start-recording", target: "offscreen", data: mediaStreamId });
+        await requestRuntime({ type: "start-recording", target: "offscreen", data: mediaStreamId });
     } else {
-        chrome.runtime.sendMessage({ type: "stop-recording", target: "offscreen" });
+        await requestRuntime({ type: "stop-recording", target: "offscreen" });
     }
 };
 
@@ -341,8 +351,7 @@ const dataUrlToBlob = (dataUrl) => {
 const takeScreenshot = async (captureTarget = "tab", options = {}) => {
     const activeTab = await getActiveTab();
     if (!activeTab) {
-        console.error("No active tab found for screenshot");
-        return;
+        throw new Error("No capturable tab found (chrome:// pages can't be captured)");
     }
 
     try {
@@ -461,6 +470,7 @@ const takeScreenshot = async (captureTarget = "tab", options = {}) => {
         console.log(`Screenshot saved to preview: ${filename}${consoleLogs ? ` (${consoleLogs.length} console logs)` : ''}${networkLogs ? ` (${networkLogs.length} network entries)` : ''}`);
     } catch (error) {
         console.error("Error taking screenshot:", error);
+        throw error;
     }
 };
 

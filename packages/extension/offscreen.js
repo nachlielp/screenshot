@@ -12,11 +12,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     switch (message.type) {
         case "start-recording":
-            startRecording(message.data);
-            break;
+            startRecording(message.data)
+                .then(() => sendResponse({ success: true }))
+                .catch((error) => sendResponse({ success: false, error: error.message }));
+            return true;
         case "stop-recording":
-            stopRecording();
-            break;
+            stopRecording()
+                .then(() => sendResponse({ success: true }))
+                .catch((error) => sendResponse({ success: false, error: error.message }));
+            return true;
         case "capture-desktop-screenshot":
             captureDesktopScreenshot(message.streamId, message.captureTarget)
                 .then((result) => sendResponse(result))
@@ -35,6 +39,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 let mediaRecorder = null;
 let recordedChunks = [];
+// Resources owned by the active recording; released by releaseRecordingResources().
+let recordingResources = { tabStream: null, micStream: null, audioContext: null };
+
+function releaseRecordingResources() {
+    const { tabStream, micStream, audioContext } = recordingResources;
+    tabStream?.getTracks().forEach((track) => track.stop());
+    micStream?.getTracks().forEach((track) => track.stop());
+    if (audioContext && audioContext.state !== "closed") {
+        audioContext.close().catch(() => {});
+    }
+    recordingResources = { tabStream: null, micStream: null, audioContext: null };
+}
 
 /**
  * Stops the recording and handles the cleanup.
@@ -42,12 +58,20 @@ let recordedChunks = [];
 async function stopRecording () {
     console.log("[offscreen] Stopping recording");
 
-    if (mediaRecorder?.state === "recording") {
-        mediaRecorder.stop();
-
-        mediaRecorder.stream.getTracks().forEach((track) => track.stop());
+    if (!mediaRecorder || mediaRecorder.state === "inactive") {
+        releaseRecordingResources();
+        throw new Error("No recording is in progress");
     }
-    await stopTabCapture();
+
+    try {
+        mediaRecorder.stop();
+        mediaRecorder.stream.getTracks().forEach((track) => track.stop());
+    } finally {
+        releaseRecordingResources();
+        await stopTabCapture().catch((error) => {
+            console.warn("[offscreen] Error stopping tab capture:", error);
+        });
+    }
 }
 
 /**
@@ -69,17 +93,22 @@ async function stopTabCapture () {
  * @param {string} streamId - The stream ID for the tab to be recorded.
  */
 async function startRecording (streamId) {
-    try {
-        if (mediaRecorder?.state === "recording") {
-            throw new Error("[offscreen] Recording is already in progress.");
-        }
+    if (mediaRecorder && mediaRecorder.state !== "inactive") {
+        throw new Error("Recording is already in progress");
+    }
 
+    recordedChunks = [];
+    let tabStream = null;
+    let micStream = null;
+
+    try {
         // Create media streams for tab capture and microphone
-        const tabStream = await getTabMediaStream(streamId);
-        const micStream = await getMicrophoneStream();
+        tabStream = await getTabMediaStream(streamId);
+        micStream = await getMicrophoneStream();
 
         // Combine tab and microphone streams
-        const combinedStream = combineMediaStreams(tabStream, micStream);
+        const { combinedStream, audioContext } = combineMediaStreams(tabStream, micStream);
+        recordingResources = { tabStream, micStream, audioContext };
 
         mediaRecorder = new MediaRecorder(combinedStream, {
             mimeType: "video/webm",
@@ -91,7 +120,12 @@ async function startRecording (streamId) {
 
         mediaRecorder.start();
     } catch (error) {
+        tabStream?.getTracks().forEach((track) => track.stop());
+        micStream?.getTracks().forEach((track) => track.stop());
+        releaseRecordingResources();
+        mediaRecorder = null;
         console.error("[offscreen] Error starting recording:", error);
+        throw error;
     }
 }
 
@@ -145,10 +179,12 @@ function combineMediaStreams (tabStream, micStream) {
     audioContext.createMediaStreamSource(micStream).connect(audioDestination);
     audioContext.createMediaStreamSource(tabStream).connect(audioDestination);
 
-    return new MediaStream([
+    const combinedStream = new MediaStream([
         tabStream.getVideoTracks()[0],
         audioDestination.stream.getTracks()[0],
     ]);
+
+    return { combinedStream, audioContext };
 }
 
 /**
@@ -164,6 +200,7 @@ function handleDataAvailable (event) {
  */
 
 async function handleRecordingStop () {
+    mediaRecorder = null;
     const recordedBlob = new Blob(recordedChunks, { type: "video/webm" });
     
     // Generate filename with timestamp

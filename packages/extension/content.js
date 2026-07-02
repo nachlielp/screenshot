@@ -253,8 +253,13 @@ async function captureFullPageScreenshot() {
         xPositions.push(maxScrollX);
     }
 
+    const MAX_SECTIONS = 80;
     const totalCaptures = xPositions.length * yPositions.length;
     console.log(`[content.js] Captures needed: ${xPositions.length} cols x ${yPositions.length} rows = ${totalCaptures}`);
+
+    if (totalCaptures > MAX_SECTIONS) {
+        throw new Error(`Page is too large for full-page capture (${totalCaptures} sections, max ${MAX_SECTIONS})`);
+    }
 
     // Create canvas at CSS-pixel size
     const canvas = document.createElement('canvas');
@@ -267,6 +272,7 @@ async function captureFullPageScreenshot() {
 
     let captureCount = 0;
 
+    try {
     // Process rows top-to-bottom (later rows overwrite overlapping areas,
     // which is fine — they just re-draw the same content).
     for (const targetY of yPositions) {
@@ -305,9 +311,10 @@ async function captureFullPageScreenshot() {
             }
         }
     }
-
-    // Restore original scroll position
-    await forceScrollAndWait(originalScrollX, originalScrollY);
+    } finally {
+        // Always restore the user's scroll position, even if a capture failed mid-loop
+        await forceScrollAndWait(originalScrollX, originalScrollY);
+    }
 
     console.log(`[content.js] Full page capture complete. ${captureCount}/${totalCaptures} sections captured`);
 
