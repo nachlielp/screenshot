@@ -215,7 +215,8 @@ export const incrementSlideshowViewCount = mutation({
 
     await ctx.db.patch(slideshow._id, {
       viewCount: nextViewCount,
-      viewerTokens: [...existingViewerTokens, args.viewerToken],
+      // Cap the dedupe list so the document can't grow unbounded
+      viewerTokens: [...existingViewerTokens, args.viewerToken].slice(-500),
       lastViewedAt: Date.now(),
     });
   },

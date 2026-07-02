@@ -478,3 +478,24 @@
     padding: 10px 10px 16px;
   }
 }
+
+/* Search + load more */
+.lib-search-input {
+  padding: 8px 14px;
+  border: 1px solid #e0e0e0;
+  border-radius: 999px;
+  font-size: 13.5px;
+  min-width: 220px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.lib-search-input:focus {
+  border-color: #ffc107;
+}
+
+.lib-load-more {
+  display: flex;
+  justify-content: center;
+  padding: 20px 0 32px;
+}

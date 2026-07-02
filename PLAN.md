@@ -1,5 +1,13 @@
 # Improvement & Refactor Plan
 
+> **Status (2026-07-02):** Phases 0, 2, 3, 4 and most of 5 are implemented.
+> - Phase 0 — shipped (promise messaging, recorder guards, body caps, scroll restore, token pre-flight).
+> - Phase 1 — partially shipped: shared annotation engine + messaging helper exist as plain ESM (`packages/extension/shared/`, `utils/messaging.js`); the full TS/Vite conversion of the extension was intentionally deferred (see commit history).
+> - Phase 2 — shipped: vector annotation engine (line/pen/select/move/resize/delete), annotations persist in IndexedDB and Convex, editable after upload; verified with 22 browser tests.
+> - Phase 3 — shipped: shift-click multi-select + hide/unhide of console/network entries.
+> - Phase 4 — shipped: popup Record Tab/Screen/Stop, unified offscreen recorder, video review page with filmstrip + snap-frame → slideshow annotator.
+> - Phase 5 — shipped: viewerTokens cap, library load-more + search, log-fetch error states. Remaining: orphaned-blob sweep cron, engine unit tests in CI.
+
 Goals, in the user's words:
 1. Edit mode: draw **lines** and **move annotations** after placing them.
 2. Uploaded captures with console/network logs: **shift-select a bunch of entries and delete** (cleanup).

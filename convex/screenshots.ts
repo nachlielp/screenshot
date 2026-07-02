@@ -392,7 +392,8 @@ export const incrementViewCount = mutation({
 
     await ctx.db.patch(screenshot._id, {
       viewCount: nextViewCount,
-      viewerTokens: [...existingViewerTokens, args.viewerToken],
+      // Cap the dedupe list so the document can't grow unbounded
+      viewerTokens: [...existingViewerTokens, args.viewerToken].slice(-500),
       lastViewedAt: Date.now(),
     });
   },

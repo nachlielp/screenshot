@@ -10,12 +10,15 @@ Screenshot is a Chrome extension plus a small React app for capturing screenshot
 
 ## Current feature set
 
-- Capture screenshots
+- Capture screenshots (tab, full page, delayed, screen/window)
+- Record tab or screen videos with mic narration, then scrub the recording, snap frames, and annotate them as a slideshow
+- Vector annotations (rectangle, arrow, line, pen, text) that stay selectable, movable, and editable — including after upload
 - Upload media to Convex storage
 - Sign in with Clerk from the extension
-- Open a personal library in the web app
+- Open a personal library in the web app (search, grouping, multi-select delete)
 - Share captures with token-based public URLs
 - Store optional HTML, console logs, and network logs alongside a capture
+- Clean up shared logs: shift-select console/network entries and hide them (reversible)
 - Let owners rename captures and save marked viewer annotations
 - Automatically remove expired captures after 30 days
 

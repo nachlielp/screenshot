@@ -105,10 +105,14 @@ function UnauthenticatedView() {
   );
 }
 
+const LIBRARY_PAGE_SIZE = 100;
+
 function AuthenticatedLibrary() {
   const { user } = useUser();
+  const [libraryLimit, setLibraryLimit] = useState(LIBRARY_PAGE_SIZE);
+  const [searchQuery, setSearchQuery] = useState("");
   const libraryItems = useQuery(api.library.getUserLibraryItems, {
-    limit: 100,
+    limit: libraryLimit,
   }) as LibraryItem[] | undefined;
   const deleteScreenshot = useMutation(api.screenshots.deleteScreenshot);
   const deleteSlideshow = useMutation(api.slideshows.deleteSlideshow);
@@ -124,10 +128,22 @@ function AuthenticatedLibrary() {
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
 
-  const groupedItems = libraryItems
-    ? groupLibraryItems(libraryItems, currentGrouping)
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const visibleItems = libraryItems
+    ? normalizedQuery
+      ? libraryItems.filter((item) =>
+          [item.title, item.filename, item.sourceUrl]
+            .filter(Boolean)
+            .some((value) => value!.toLowerCase().includes(normalizedQuery))
+        )
+      : libraryItems
+    : undefined;
+
+  const groupedItems = visibleItems
+    ? groupLibraryItems(visibleItems, currentGrouping)
     : [];
   const orderedItems = groupedItems.flatMap((group) => group.items);
+  const mayHaveMore = Boolean(libraryItems && libraryItems.length >= libraryLimit);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -236,8 +252,7 @@ function AuthenticatedLibrary() {
   };
 
   const selectAll = () => {
-    if (!libraryItems) return;
-    setSelectedKeys(new Set(libraryItems.map(getItemKey)));
+    setSelectedKeys(new Set(orderedItems.map(getItemKey)));
   };
 
   const openItem = (item: LibraryItem) => {
@@ -327,6 +342,13 @@ function AuthenticatedLibrary() {
             )}
           </div>
           <div className="lib-toolbar-right">
+            <input
+              type="search"
+              className="lib-search-input"
+              placeholder="Search title or URL…"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+            />
             <div className="lib-grouping-controls">
               <button
                 className="lib-btn lib-btn-outline"
@@ -360,6 +382,11 @@ function AuthenticatedLibrary() {
           <h2>No captures yet</h2>
           <p>Install the Screenshot extension and start taking screenshots or building slideshows.</p>
         </div>
+      ) : orderedItems.length === 0 ? (
+        <div className="lib-empty">
+          <h2>No matches</h2>
+          <p>No captures match “{searchQuery}”.</p>
+        </div>
       ) : (
         <div className="lib-content">
           {groupedItems.map((group, index) => (
@@ -377,6 +404,16 @@ function AuthenticatedLibrary() {
               groupIndex={index}
             />
           ))}
+          {mayHaveMore && !normalizedQuery && (
+            <div className="lib-load-more">
+              <button
+                className="lib-btn lib-btn-outline"
+                onClick={() => setLibraryLimit((limit) => limit + LIBRARY_PAGE_SIZE)}
+              >
+                Load more
+              </button>
+            </div>
+          )}
         </div>
       )}
 
