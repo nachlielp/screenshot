@@ -6,6 +6,14 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/assets/camra-32.png" />
     <link rel="apple-touch-icon" sizes="128x128" href="/assets/camra-128.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Machine-readable access for AI agents: share links look like
+         <app>/#/snapshot/{shareToken}. The same data (image URL, console
+         logs, network logs, metadata) is served as JSON by the endpoint
+         below — take the Convex URL, swap .convex.cloud for .convex.site. -->
+    <meta
+      name="snapshot-agent-api"
+      content="%VITE_CONVEX_URL%/api/snapshot/{shareToken} (replace .convex.cloud with .convex.site in this URL)"
+    />
     <title>Screenshot</title>
   </head>
   <body>

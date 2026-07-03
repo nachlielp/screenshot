@@ -21,6 +21,39 @@ Screenshot is a Chrome extension plus a small React app for capturing screenshot
 - Clean up shared logs: shift-select console/network entries and hide them (reversible)
 - Let owners rename captures and save marked viewer annotations
 - Automatically remove expired captures after 30 days
+- Agent-friendly JSON API: every snapshot is fetchable as machine-readable JSON (see below)
+
+## Agent access (JSON API)
+
+Every shared snapshot is also available as plain JSON so an AI agent (or any script) can read the image, console logs, network logs, and metadata without opening the viewer UI. The API is served by a Convex HTTP action on the deployment's `.convex.site` domain and is gated by the same unguessable share token as the viewer link — no auth needed.
+
+```
+GET https://<deployment>.convex.site/api/snapshot/<shareToken>
+```
+
+Returns one JSON document with:
+
+- `media.url` — direct URL to the image or video file
+- `console` / `network` — the log entries inlined (entries the owner hid via cleanup are filtered out; each entry keeps its original `index`)
+- `device`, `sourceUrl`, `capturedAt`, `annotations`, `markedHighlights` — capture metadata
+- `htmlUrl` — the captured page HTML, when stored
+
+Sub-resources for fetching pieces individually:
+
+```
+GET /api/snapshot/<shareToken>/console   # console log array only
+GET /api/snapshot/<shareToken>/network   # network log array only
+GET /api/snapshot/<shareToken>/image     # 302 redirect to the raw image/video
+GET /api/snapshot/<shareToken>/html      # 302 redirect to the captured HTML
+```
+
+Ways to get the API URL from a viewer share link (`https://<app>/#/snapshot/<shareToken>`):
+
+- Click **🤖 Agent link** in the snapshot viewer toolbar — it copies the JSON URL.
+- Take the last path segment (the share token) and plug it into the endpoint above.
+- Agents can self-discover: fetching the share link returns the SPA's `index.html`, which contains a `<meta name="snapshot-agent-api">` tag describing the endpoint.
+
+Example agent prompt: "Fetch this QA snapshot and diagnose the bug: `https://<deployment>.convex.site/api/snapshot/<token>` — the JSON has the screenshot URL, console errors, and failed network requests."
 
 ## Quick start
 

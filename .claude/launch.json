@@ -4,8 +4,8 @@
     {
       "name": "web",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@screenshot/web", "dev"],
-      "port": 5173
+      "runtimeArgs": ["--filter", "@screenshot/web", "dev", "--port", "5175", "--strictPort"],
+      "port": 5175
     },
     {
       "name": "web-preview",

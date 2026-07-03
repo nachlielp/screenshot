@@ -7,6 +7,7 @@ import { ImageEditor, type ImageEditorSaveResult } from "../components/ImageEdit
 import { AnnotatedImage } from "../components/AnnotatedImage";
 import { renderAnnotatedBlob } from "@shared/annotation-engine";
 import { buildAppUrl } from "../lib/routes";
+import { buildSnapshotAgentUrl } from "../lib/agentApi";
 import "./SnapshotViewer.css";
 
 type ViewMode = "info" | "console" | "network";
@@ -117,6 +118,9 @@ export default function SnapshotViewer() {
   const [draftTitle, setDraftTitle] = useState("");
   const [isSavingTitle, setIsSavingTitle] = useState(false);
   const [shareCopyState, setShareCopyState] = useState<"idle" | "copied" | "error">(
+    "idle"
+  );
+  const [agentCopyState, setAgentCopyState] = useState<"idle" | "copied" | "error">(
     "idle"
   );
   const [imageCopyState, setImageCopyState] = useState<"idle" | "copied" | "error">(
@@ -342,6 +346,12 @@ export default function SnapshotViewer() {
     const timeout = window.setTimeout(() => setShareCopyState("idle"), 2000);
     return () => window.clearTimeout(timeout);
   }, [shareCopyState]);
+
+  useEffect(() => {
+    if (agentCopyState === "idle") return;
+    const timeout = window.setTimeout(() => setAgentCopyState("idle"), 2000);
+    return () => window.clearTimeout(timeout);
+  }, [agentCopyState]);
 
   useEffect(() => {
     if (canEdit) return;
@@ -718,6 +728,17 @@ export default function SnapshotViewer() {
     }
   }
 
+  async function handleCopyAgentLink() {
+    if (!shareToken) return;
+
+    try {
+      await navigator.clipboard.writeText(buildSnapshotAgentUrl(shareToken));
+      setAgentCopyState("copied");
+    } catch {
+      setAgentCopyState("error");
+    }
+  }
+
   return (
     <div className="sv-container">
       <div className="sv-toolbar">
@@ -803,6 +824,20 @@ export default function SnapshotViewer() {
               : shareCopyState === "error"
                 ? "Copy failed"
                 : "Share"}
+          </button>
+          <button
+            className={`sv-share-btn sv-agent-btn${
+              agentCopyState === "copied" ? " copied" : ""
+            }${agentCopyState === "error" ? " error" : ""}`}
+            onClick={() => void handleCopyAgentLink()}
+            type="button"
+            title="Copy a JSON API link an AI agent can fetch (image, logs, network, metadata) without opening this page"
+          >
+            {agentCopyState === "copied"
+              ? "Copied link"
+              : agentCopyState === "error"
+                ? "Copy failed"
+                : "🤖 Agent link"}
           </button>
           <span className="sv-view-count">
             👁 {screenshot.viewCount} viewer{screenshot.viewCount !== 1 ? "s" : ""}
@@ -1379,6 +1414,20 @@ function ConsolePanel({
   return (
     <div className="sv-panel">
       <div className="sv-console-toolbar">
+        {cleanupMode && (
+          <label className="sv-cleanup-select-all">
+            <SelectAllCheckbox
+              visibleIndices={filtered.map((row) => row.entryIndex)}
+              selectedIndices={selectedIndices}
+              onSelectionChange={(next) => {
+                selectionAnchorRef.current = null;
+                onSelectionChange(next);
+              }}
+              ariaLabel="Select all visible console entries"
+            />
+            Select all
+          </label>
+        )}
         {filters.map((currentFilter) => (
           <button
             key={currentFilter}
@@ -1794,7 +1843,19 @@ function NetworkPanel({
         <table className="sv-network-table">
           <thead>
             <tr>
-              {cleanupMode && <th style={{ width: "36px" }} aria-label="Select" />}
+              {cleanupMode && (
+                <th style={{ width: "36px", textAlign: "center" }} aria-label="Select">
+                  <SelectAllCheckbox
+                    visibleIndices={filteredLogs.map((row) => row.entryIndex)}
+                    selectedIndices={selectedIndices}
+                    onSelectionChange={(next) => {
+                      selectionAnchorRef.current = null;
+                      onSelectionChange(next);
+                    }}
+                    ariaLabel="Select all visible requests"
+                  />
+                </th>
+              )}
               <th style={{ width: "52px" }}>#</th>
               <th>Name</th>
               <th style={{ width: "80px" }}>Load Time</th>
@@ -2073,6 +2134,52 @@ function NetworkRow({
         </tr>
       )}
     </>
+  );
+}
+
+// Header/toolbar checkbox that selects or deselects every currently visible
+// (filtered) entry; shows the indeterminate state for partial selections.
+function SelectAllCheckbox({
+  visibleIndices,
+  selectedIndices,
+  onSelectionChange,
+  ariaLabel,
+}: {
+  visibleIndices: number[];
+  selectedIndices: Set<number>;
+  onSelectionChange: (next: Set<number>) => void;
+  ariaLabel: string;
+}) {
+  const allSelected =
+    visibleIndices.length > 0 &&
+    visibleIndices.every((entryIndex) => selectedIndices.has(entryIndex));
+  const someSelected =
+    !allSelected &&
+    visibleIndices.some((entryIndex) => selectedIndices.has(entryIndex));
+
+  const handleChange = () => {
+    const next = new Set(selectedIndices);
+    if (allSelected) {
+      visibleIndices.forEach((entryIndex) => next.delete(entryIndex));
+    } else {
+      visibleIndices.forEach((entryIndex) => next.add(entryIndex));
+    }
+    onSelectionChange(next);
+  };
+
+  return (
+    <input
+      type="checkbox"
+      className="sv-cleanup-checkbox"
+      checked={allSelected}
+      disabled={visibleIndices.length === 0}
+      ref={(node) => {
+        if (node) node.indeterminate = someSelected;
+      }}
+      onChange={handleChange}
+      onClick={(event) => event.stopPropagation()}
+      aria-label={ariaLabel}
+    />
   );
 }
 
