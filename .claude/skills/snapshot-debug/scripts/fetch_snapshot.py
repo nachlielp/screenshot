@@ -33,7 +33,9 @@ import sys
 import urllib.request
 from pathlib import Path
 
-DEFAULT_API_BASE = "https://fleet-hound-777.convex.site"
+# Production Screenshot deployment. Override with --base or SNAPSHOT_API_BASE
+# for other deployments (e.g. a dev/staging Convex instance).
+DEFAULT_API_BASE = "https://fiery-yak-273.convex.site"
 
 MEDIA_EXT = {
     "image/png": "png",
@@ -168,7 +170,12 @@ def main() -> None:
     print(f"  console.json   ({len(console_entries)} entries, {len(errors)} errors, {len(warnings)} warnings)")
     print(f"  network.json   ({len(network_entries)} requests, {len(failed)} failed)")
     if media_path:
-        print(f"  {media_path.name}      ({media.get('mimeType')}, {media.get('width')}x{media.get('height')})")
+        dims = (
+            f", {media['width']}x{media['height']}"
+            if media.get("width") and media.get("height")
+            else ""
+        )
+        print(f"  {media_path.name}      ({media.get('mimeType')}{dims})")
     if html_path:
         print(f"  page.html      (captured DOM)")
     if data.get("annotations"):
