@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from "react";
 import type { Id } from "@convex/_generated/dataModel";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { buildAppUrl } from "../lib/routes";
+import { buildAgentSkillText } from "../lib/agentApi";
 import "./Library.css";
 
 type ScreenshotCaptureType = "screenshot" | "tab-recording" | "screen-recording";
@@ -273,6 +274,15 @@ function AuthenticatedLibrary() {
     }
   };
 
+  const copyAgentSkill = async () => {
+    try {
+      await navigator.clipboard.writeText(buildAgentSkillText());
+      showToast("✓ Agent skill copied — paste it into your AI agent");
+    } catch {
+      showToast("Failed to copy agent skill");
+    }
+  };
+
   useEffect(() => {
     const handler = (event: MouseEvent) => {
       if (!(event.target as Element).closest(".lib-grouping-controls")) {
@@ -306,6 +316,13 @@ function AuthenticatedLibrary() {
             </p>
           </div>
           <div className="lib-header-right">
+            <button
+              className="lib-btn lib-btn-outline lib-copy-skill-btn"
+              onClick={copyAgentSkill}
+              title="Copy paste-ready instructions that let any AI agent read your shared snapshots (image, console, network, metadata) as JSON"
+            >
+              🤖 Copy agent skill
+            </button>
             <div className="lib-user-info">
               <span>{user?.primaryEmailAddress?.emailAddress}</span>
               <UserButton />
