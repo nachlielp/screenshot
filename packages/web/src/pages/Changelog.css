@@ -1,0 +1,235 @@
+.cl-page {
+  min-height: 100vh;
+  background: #f7f8fa;
+  padding: 48px 20px 80px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
+    Ubuntu, Cantarell, sans-serif;
+  color: #1a1a1a;
+}
+
+/* ── Hero ── */
+.cl-hero {
+  max-width: 760px;
+  margin: 0 auto 48px;
+  text-align: center;
+}
+
+.cl-eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 12px;
+  font-weight: 700;
+  color: #b45309;
+  margin-bottom: 10px;
+}
+
+.cl-hero h1 {
+  font-size: 42px;
+  letter-spacing: -0.02em;
+  margin-bottom: 14px;
+}
+
+.cl-summary {
+  font-size: 16.5px;
+  line-height: 1.6;
+  color: #4b5563;
+  max-width: 620px;
+  margin: 0 auto 14px;
+}
+
+.cl-totals {
+  font-size: 13.5px;
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Timeline ── */
+.cl-timeline {
+  max-width: 760px;
+  margin: 0 auto;
+  position: relative;
+  padding-left: 56px;
+}
+
+.cl-timeline::before {
+  content: "";
+  position: absolute;
+  left: 21px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: linear-gradient(to bottom, #fbbf24, #e5e7eb 70%);
+  border-radius: 2px;
+}
+
+.cl-entry {
+  position: relative;
+  margin-bottom: 28px;
+}
+
+.cl-marker {
+  position: absolute;
+  left: -56px;
+  top: 18px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 19px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+}
+
+.cl-feature .cl-marker { border-color: #fbbf24; }
+.cl-fix .cl-marker { border-color: #f87171; }
+.cl-stability .cl-marker { border-color: #60a5fa; }
+.cl-wip .cl-marker { border-color: #d1d5db; }
+
+/* ── Cards ── */
+.cl-card {
+  background: #ffffff;
+  border: 1px solid #ececec;
+  border-radius: 14px;
+  padding: 22px 24px 18px;
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.06);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.cl-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.1);
+}
+
+.cl-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.cl-badge {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+.cl-badge-feature { background: #fef3c7; color: #92400e; }
+.cl-badge-fix { background: #fee2e2; color: #b91c1c; }
+.cl-badge-stability { background: #dbeafe; color: #1d4ed8; }
+.cl-badge-wip { background: #f3f4f6; color: #6b7280; }
+
+.cl-date {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.cl-hash {
+  margin-left: auto;
+  font-size: 12px;
+  color: #9ca3af;
+  background: #f9fafb;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  padding: 2px 8px;
+}
+
+.cl-card h2 {
+  font-size: 19px;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  margin-bottom: 8px;
+}
+
+.cl-card-summary {
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: #4b5563;
+  margin-bottom: 12px;
+}
+
+.cl-highlights {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.cl-highlights li {
+  position: relative;
+  padding-left: 22px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #374151;
+}
+
+.cl-highlights li::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 8px;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: #fbbf24;
+  transform: rotate(45deg);
+}
+
+.cl-fix .cl-highlights li::before { background: #f87171; }
+.cl-stability .cl-highlights li::before { background: #60a5fa; }
+
+/* ── Footer stats ── */
+.cl-card-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid #f3f4f6;
+  padding-top: 12px;
+}
+
+.cl-statbar {
+  flex: 0 0 96px;
+  height: 6px;
+  border-radius: 999px;
+  background: #fecaca;
+  overflow: hidden;
+  display: inline-block;
+}
+
+.cl-statbar-added {
+  display: block;
+  height: 100%;
+  background: #4ade80;
+}
+
+.cl-stats-text {
+  font-size: 12.5px;
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+}
+
+.cl-added { color: #16a34a; font-weight: 600; }
+.cl-removed { color: #dc2626; font-weight: 600; }
+
+/* ── Responsive ── */
+@media (max-width: 560px) {
+  .cl-hero h1 { font-size: 32px; }
+  .cl-timeline { padding-left: 44px; }
+  .cl-timeline::before { left: 15px; }
+  .cl-marker {
+    left: -44px;
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+  .cl-card { padding: 18px 16px 14px; }
+  .cl-hash { display: none; }
+}

@@ -6,6 +6,7 @@ import SnapshotViewer from "./pages/SnapshotViewer";
 import SlideshowViewer from "./pages/SlideshowViewer";
 import Library from "./pages/Library";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
+import Changelog from "./pages/Changelog";
 
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL);
 
@@ -17,6 +18,7 @@ export default function App() {
         <Route path="/slideshow/:shareToken" element={<SlideshowViewer />} />
         <Route path="/library" element={<Library />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />
+        <Route path="/changelog" element={<Changelog />} />
         <Route path="/" element={<Navigate to="/library" replace />} />
         <Route path="*" element={<Navigate to="/library" replace />} />
       </Routes>

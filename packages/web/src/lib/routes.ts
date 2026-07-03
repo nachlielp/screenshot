@@ -22,6 +22,7 @@ export function migrateLegacyPathToHashRoute() {
     ? "/library"
     : relativePath === "/library" ||
         relativePath === "/privacy" ||
+        relativePath === "/changelog" ||
         relativePath.startsWith("/snapshot/") ||
         relativePath.startsWith("/slideshow/")
       ? relativePath
