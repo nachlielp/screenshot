@@ -10,6 +10,7 @@ import { api } from "@convex/_generated/api";
 import { useState, useEffect, useCallback } from "react";
 import type { Id } from "@convex/_generated/dataModel";
 import ConfirmDialog from "../components/ConfirmDialog";
+import { Button } from "../components/Button";
 import { buildAppUrl } from "../lib/routes";
 import { buildAgentSkillText } from "../lib/agentApi";
 import "./Library.css";
@@ -99,7 +100,7 @@ function UnauthenticatedView() {
         <h1>📸 Screenshot</h1>
         <p>Sign in to view your capture library</p>
         <SignInButton mode="modal">
-          <button className="lib-signin-btn">Sign in with Google</button>
+          <Button variant="primary">Sign in with Google</Button>
         </SignInButton>
       </div>
     </div>
@@ -316,13 +317,12 @@ function AuthenticatedLibrary() {
             </p>
           </div>
           <div className="lib-header-right">
-            <button
-              className="lib-btn lib-btn-outline lib-copy-skill-btn"
+            <Button
               onClick={copyAgentSkill}
               title="Copy paste-ready instructions that let any AI agent read your shared snapshots (image, console, network, metadata) as JSON"
             >
               🤖 Copy agent skill
-            </button>
+            </Button>
             <div className="lib-user-info">
               <span>{user?.primaryEmailAddress?.emailAddress}</span>
               <UserButton />
@@ -332,33 +332,29 @@ function AuthenticatedLibrary() {
         <div className="lib-toolbar">
           <div className="lib-toolbar-left">
             {!selectMode ? (
-              <button
-                className="lib-btn lib-btn-outline"
-                onClick={() => setSelectMode(true)}
-              >
+              <Button onClick={() => setSelectMode(true)}>
                 Select
-              </button>
+              </Button>
             ) : (
               <>
-                <button className="lib-btn lib-btn-outline" onClick={selectAll}>
+                <Button onClick={selectAll}>
                   Select All
-                </button>
-                <button
-                  className="lib-btn lib-btn-danger"
+                </Button>
+                <Button
+                  variant="danger"
                   onClick={handleBatchDelete}
                   disabled={selectedKeys.size === 0}
                 >
                   Delete ({selectedKeys.size})
-                </button>
-                <button
-                  className="lib-btn lib-btn-outline"
+                </Button>
+                <Button
                   onClick={() => {
                     setSelectMode(false);
                     setSelectedKeys(new Set());
                   }}
                 >
                   Cancel
-                </button>
+                </Button>
               </>
             )}
           </div>
@@ -371,12 +367,9 @@ function AuthenticatedLibrary() {
               onChange={(event) => setSearchQuery(event.target.value)}
             />
             <div className="lib-grouping-controls">
-              <button
-                className="lib-btn lib-btn-outline"
-                onClick={() => setShowGroupMenu((open) => !open)}
-              >
+              <Button onClick={() => setShowGroupMenu((open) => !open)}>
                 Group: {currentGrouping === "none" ? "None" : currentGrouping}
-              </button>
+              </Button>
               {showGroupMenu && (
                 <div className="lib-grouping-menu">
                   {(["none", "date", "domain"] as const).map((grouping) => (
@@ -411,12 +404,11 @@ function AuthenticatedLibrary() {
             {libraryItems.length !== 1 ? "s" : ""} match “{searchQuery}”.
           </p>
           {mayHaveMore && (
-            <button
-              className="lib-btn lib-btn-outline"
+            <Button
               onClick={() => setLibraryLimit((limit) => limit + LIBRARY_PAGE_SIZE)}
             >
               Search older captures
-            </button>
+            </Button>
           )}
         </div>
       ) : (
@@ -438,12 +430,11 @@ function AuthenticatedLibrary() {
           ))}
           {mayHaveMore && (
             <div className="lib-load-more">
-              <button
-                className="lib-btn lib-btn-outline"
+              <Button
                 onClick={() => setLibraryLimit((limit) => limit + LIBRARY_PAGE_SIZE)}
               >
                 {normalizedQuery ? "Search older captures" : "Load more"}
-              </button>
+              </Button>
             </div>
           )}
         </div>
@@ -588,24 +579,24 @@ function LibraryCard({
           • {item.viewCount} viewer{item.viewCount !== 1 ? "s" : ""}
         </div>
         <div className="lib-card-actions">
-          <button
-            className="lib-btn lib-btn-sm lib-btn-primary"
+          <Button
+            variant="primary"
             onClick={(event) => {
               event.stopPropagation();
               onCopyLink();
             }}
           >
             Share Link
-          </button>
-          <button
-            className="lib-btn lib-btn-sm lib-btn-danger"
+          </Button>
+          <Button
+            variant="danger"
             onClick={(event) => {
               event.stopPropagation();
               onDelete();
             }}
           >
             Delete
-          </button>
+          </Button>
         </div>
       </div>
     </div>

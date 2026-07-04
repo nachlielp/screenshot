@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { buildAppUrl } from "../lib/routes";
+import { Button } from "../components/Button";
 import "./SlideshowViewer.css";
 
 interface SlideshowFrame {
@@ -215,9 +216,14 @@ export default function SlideshowViewer() {
             <span className="ssv-owner-note">Hidden frames are excluded from the shared view.</span>
           )}
         </div>
-        <button
-          type="button"
-          className={`ssv-share-btn${shareState !== "idle" ? ` ${shareState}` : ""}`}
+        <Button
+          variant={
+            shareState === "copied"
+              ? "success"
+              : shareState === "error"
+                ? "danger"
+                : "secondary"
+          }
           onClick={copyShareLink}
         >
           {shareState === "copied"
@@ -225,7 +231,7 @@ export default function SlideshowViewer() {
             : shareState === "error"
               ? "Copy failed"
               : "Copy share link"}
-        </button>
+        </Button>
       </header>
 
       <main className="ssv-content">

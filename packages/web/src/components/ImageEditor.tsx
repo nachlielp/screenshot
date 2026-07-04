@@ -5,6 +5,7 @@ import {
   type Annotation,
   type TextEditRequest,
 } from '@shared/annotation-engine';
+import { Button } from './Button';
 import './ImageEditor.css';
 
 export interface ImageEditorSaveResult {
@@ -371,14 +372,14 @@ export function ImageEditor({
         </div>
 
         {onSave && showSaveButton && (
-          <button className="done-btn" onClick={() => void handleSave()}>
+          <Button variant="primary" onClick={() => void handleSave()}>
             <ToolIcon name="check" /> Save
-          </button>
+          </Button>
         )}
         {onCancel && (
-          <button className="cancel-btn" onClick={onCancel}>
+          <Button onClick={onCancel}>
             Cancel
-          </button>
+          </Button>
         )}
       </div>
 

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, MouseEvent as ReactMouseEvent, RefCallback } from "react";
 import { ImageEditor, type ImageEditorSaveResult } from "../components/ImageEditor";
 import { AnnotatedImage } from "../components/AnnotatedImage";
+import { Button } from "../components/Button";
 import { renderAnnotatedBlob } from "@shared/annotation-engine";
 import { buildAppUrl } from "../lib/routes";
 import { buildSnapshotAgentUrl } from "../lib/agentApi";
@@ -764,15 +765,14 @@ export default function SnapshotViewer() {
                     placeholder="Snapshot title"
                     autoFocus
                   />
-                  <button
-                    className="sv-title-action"
+                  <Button
+                    variant="primary"
                     onClick={() => void handleSaveTitle()}
                     disabled={isSavingTitle}
                   >
                     {isSavingTitle ? "Saving..." : "Save"}
-                  </button>
-                  <button
-                    className="sv-title-action sv-title-action-secondary"
+                  </Button>
+                  <Button
                     onClick={() => {
                       setDraftTitle(pageTitle);
                       setIsEditingTitle(false);
@@ -780,7 +780,7 @@ export default function SnapshotViewer() {
                     disabled={isSavingTitle}
                   >
                     Cancel
-                  </button>
+                  </Button>
                 </>
               ) : (
                 <>
@@ -792,15 +792,14 @@ export default function SnapshotViewer() {
                     📸 {pageTitle}
                   </h1>
                   {canEdit && (
-                    <button
-                      className="sv-title-edit"
+                    <Button
                       onClick={() => {
                         setDraftTitle(pageTitle);
                         setIsEditingTitle(true);
                       }}
                     >
                       Edit title
-                    </button>
+                    </Button>
                   )}
                 </>
               )}
@@ -812,25 +811,31 @@ export default function SnapshotViewer() {
         </div>
         <div className="sv-toolbar-right">
           {markNotice && <span className="sv-inline-notice">{markNotice}</span>}
-          <button
-            className={`sv-share-btn${shareCopyState === "copied" ? " copied" : ""}${
-              shareCopyState === "error" ? " error" : ""
-            }`}
+          <Button
+            variant={
+              shareCopyState === "copied"
+                ? "success"
+                : shareCopyState === "error"
+                  ? "danger"
+                  : "secondary"
+            }
             onClick={() => void handleCopyShareLink()}
-            type="button"
           >
             {shareCopyState === "copied"
               ? "Copied link"
               : shareCopyState === "error"
                 ? "Copy failed"
                 : "Share"}
-          </button>
-          <button
-            className={`sv-share-btn sv-agent-btn${
-              agentCopyState === "copied" ? " copied" : ""
-            }${agentCopyState === "error" ? " error" : ""}`}
+          </Button>
+          <Button
+            variant={
+              agentCopyState === "copied"
+                ? "success"
+                : agentCopyState === "error"
+                  ? "danger"
+                  : "secondary"
+            }
             onClick={() => void handleCopyAgentLink()}
-            type="button"
             title="Copy a JSON API link an AI agent can fetch (image, logs, network, metadata) without opening this page"
           >
             {agentCopyState === "copied"
@@ -838,7 +843,7 @@ export default function SnapshotViewer() {
               : agentCopyState === "error"
                 ? "Copy failed"
                 : "🤖 Agent link"}
-          </button>
+          </Button>
           <span className="sv-view-count">
             👁 {screenshot.viewCount} viewer{screenshot.viewCount !== 1 ? "s" : ""}
           </span>
@@ -857,36 +862,34 @@ export default function SnapshotViewer() {
             <div className={`sv-image-controls${editMode ? " is-inline" : ""}`}>
               {canEdit && hasDiagnosticsPanel && (
                 <>
-                  <button
-                    className={`sv-control-btn ${markMode ? "active" : ""}`}
+                  <Button
+                    variant={markMode ? "primary" : "secondary"}
                     onClick={handleToggleMarkMode}
                     disabled={editMode || isSavingMarkedView}
                   >
                     {markMode ? "Cancel Marking" : "🏷 Mark Mode"}
-                  </button>
+                  </Button>
                   {markMode && (
                     <>
-                      <button
-                        className="sv-control-btn"
+                      <Button
                         onClick={handleSaveMarkedView}
                         disabled={isSavingMarkedView}
                       >
                         {isSavingMarkedView ? "Saving..." : "💾 Save Highlights"}
-                      </button>
-                      <button
-                        className="sv-control-btn"
+                      </Button>
+                      <Button
                         onClick={handleCancelMarkedView}
                         disabled={isSavingMarkedView}
                       >
                         Cancel
-                      </button>
+                      </Button>
                     </>
                   )}
                 </>
               )}
               {canEdit && (
-                <button
-                  className={`sv-control-btn ${editMode ? "active" : ""}`}
+                <Button
+                  variant={editMode ? "primary" : "secondary"}
                   onClick={() => {
                     if (markMode || !canEdit) return;
 
@@ -900,12 +903,16 @@ export default function SnapshotViewer() {
                   disabled={markMode}
                 >
                   {editMode ? "✓ Done Editing" : "✏️ Edit"}
-                </button>
+                </Button>
               )}
-              <button
-                className={`sv-control-btn${imageCopyState === "copied" ? " copied" : ""}${
-                  imageCopyState === "error" ? " error" : ""
-                }`}
+              <Button
+                variant={
+                  imageCopyState === "copied"
+                    ? "success"
+                    : imageCopyState === "error"
+                      ? "danger"
+                      : "secondary"
+                }
                 onClick={handleCopyImage}
               >
                 {imageCopyState === "copied"
@@ -913,13 +920,10 @@ export default function SnapshotViewer() {
                   : imageCopyState === "error"
                     ? "⚠️ Copy Failed"
                     : "📋 Copy Image"}
-              </button>
-              <button
-                onClick={() => void handleDownloadImage()}
-                className="sv-control-btn"
-              >
+              </Button>
+              <Button onClick={() => void handleDownloadImage()}>
                 ⬇️ Download Image
-              </button>
+              </Button>
             </div>
 
             {editMode ? (
