@@ -93,31 +93,44 @@
 }
 
 .sv-title-edit,
-.sv-title-action {
-  border: none;
-  border-radius: 999px;
-  padding: 8px 12px;
-  background: rgba(245, 78, 0, 0.18);
-  color: var(--brand-dark);
+.sv-title-action,
+.sv-title-action-secondary {
+  border: 1.5px solid var(--line-strong);
+  border-radius: 6px;
+  padding: 6px 12px;
+  background: #fff;
+  color: var(--ink);
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
+  box-shadow: 0 2px 0 var(--line-strong);
+  transition: transform 0.05s ease, box-shadow 0.05s ease, filter 0.1s ease,
+    background 0.1s ease;
 }
 
+/* Save is the primary action. */
 .sv-title-action {
-  background: var(--ink);
+  border-color: var(--brand-dark);
+  background: var(--brand);
+  box-shadow: 0 2px 0 var(--brand-dark);
   color: #fff;
 }
 
-.sv-title-action-secondary {
-  background: var(--paper-dark);
-  color: var(--muted);
+.sv-title-edit:active,
+.sv-title-action:active,
+.sv-title-action-secondary:active {
+  transform: translateY(2px);
+  box-shadow: none;
+}
+
+.sv-title-action:hover {
+  filter: brightness(1.06);
 }
 
 .sv-title-edit:hover,
-.sv-title-action:hover {
-  opacity: 0.9;
+.sv-title-action-secondary:hover {
+  background: #fff7f8;
 }
 
 .sv-subtitle {
@@ -139,34 +152,42 @@
 }
 
 .sv-share-btn {
-  border: 1.5px solid var(--line);
-  border-radius: 999px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 6px;
   padding: 8px 14px;
   background: #fff;
-  color: var(--muted);
+  color: var(--ink);
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.2s ease;
+  box-shadow: 0 2px 0 var(--line-strong);
+  transition: transform 0.05s ease, box-shadow 0.05s ease, filter 0.1s ease,
+    background 0.1s ease;
 }
 
-.sv-share-btn:hover {
-  border-color: rgba(245, 78, 0, 0.45);
-  background: var(--paper-dark);
-  color: var(--brand-dark);
+.sv-share-btn:hover:not(:disabled) {
+  background: #fff7f8;
 }
 
+.sv-share-btn:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: none;
+}
+
+/* Copy-style feedback flips to the success color per the design system. */
 .sv-share-btn.copied {
-  border-color: rgba(245, 78, 0, 0.45);
-  background: rgba(245, 78, 0, 0.18);
-  color: var(--brand-dark);
+  border-color: var(--success-dark);
+  background: var(--success);
+  box-shadow: 0 2px 0 var(--success-dark);
+  color: #fff;
 }
 
 .sv-share-btn.error {
-  border-color: rgba(185, 28, 28, 0.24);
-  background: rgba(254, 242, 242, 0.95);
-  color: var(--danger);
+  border-color: var(--danger-dark);
+  background: var(--danger);
+  box-shadow: 0 2px 0 var(--danger-dark);
+  color: #fff;
 }
 
 .sv-view-count {
@@ -295,51 +316,58 @@
 }
 
 .sv-control-btn {
-  padding: 10px 16px;
-  border: 1.5px solid var(--line);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.92);
+  padding: 8px 16px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 6px;
+  background: #fff;
   color: var(--ink);
   cursor: pointer;
-  font-size: 14px;
-  font-weight: 600;
-  transition: all 0.2s;
+  font-size: 13px;
+  font-weight: 700;
+  transition: transform 0.05s ease, box-shadow 0.05s ease, filter 0.1s ease,
+    background 0.1s ease, border-color 0.1s ease;
   text-decoration: none;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  box-shadow: 0 2px 0 rgba(0, 0, 0, .06);
-  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 0 var(--line-strong);
 }
 
-.sv-control-btn:hover {
-  background: #fff;
-  border-color: var(--brand);
-  transform: translateY(-1px);
+.sv-control-btn:hover:not(:disabled):not(.active) {
+  background: #fff7f8;
+}
+
+.sv-control-btn:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: none;
 }
 
 .sv-control-btn.active {
   background: var(--brand);
-  border-color: var(--brand);
+  border-color: var(--brand-dark);
+  box-shadow: 0 2px 0 var(--brand-dark);
   color: #fff;
 }
 
 .sv-control-btn.copied {
-  border-color: rgba(245, 78, 0, 0.45);
-  background: rgba(245, 78, 0, 0.18);
-  color: var(--brand-dark);
+  border-color: var(--success-dark);
+  background: var(--success);
+  box-shadow: 0 2px 0 var(--success-dark);
+  color: #fff;
 }
 
 .sv-control-btn.error {
-  border-color: rgba(185, 28, 28, 0.24);
-  background: rgba(254, 242, 242, 0.95);
-  color: var(--danger);
+  border-color: var(--danger-dark);
+  background: var(--danger);
+  box-shadow: 0 2px 0 var(--danger-dark);
+  color: #fff;
 }
 
 .sv-control-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
   transform: none;
+  box-shadow: 0 2px 0 var(--line-strong);
 }
 
 .sv-placement-banner {

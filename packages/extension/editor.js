@@ -41,6 +41,7 @@ async function init() {
       enableCrop: true,
       onSelectionChange: handleSelectionChange,
       onHistoryChange: updateHistoryButtons,
+      onToolChange: updateToolButtons,
       onTextEditRequest: handleTextEditRequest,
     });
     engine.thickness = getSliderValue('thickness-slider', 7);
@@ -89,12 +90,17 @@ function handleSelectionChange(annotation) {
   }
 }
 
-// Tool selection
-function selectTool(tool) {
-  engine.setTool(tool);
+// Highlights the active tool button. Driven by the engine's onToolChange, so
+// it stays in sync even when the engine auto-returns to select after drawing.
+function updateToolButtons(tool) {
   Object.entries(TOOL_BUTTONS).forEach(([key, id]) => {
     document.getElementById(id)?.classList.toggle('active', key === tool);
   });
+}
+
+// Tool selection
+function selectTool(tool) {
+  engine.setTool(tool);
 }
 
 // ── Text input overlay ────────────────────────────────────────────────
@@ -110,7 +116,11 @@ function handleTextEditRequest(request) {
   overlay.style.display = 'block';
 
   input.value = request.annotation?.text || '';
-  input.focus();
+  // Defer focus to the next tick. The click that opened this overlay is still
+  // settling — focusing synchronously means the browser then moves focus to
+  // <body> as the click completes, which fires the input's blur and closes the
+  // box instantly. Focusing after the click resolves keeps it open.
+  setTimeout(() => input.focus(), 0);
 
   overlay.onclick = (event) => event.stopPropagation();
 

@@ -28,6 +28,7 @@ declare module "@shared/annotation-engine" {
     onChange?: () => void;
     onSelectionChange?: (annotation: Annotation | null) => void;
     onHistoryChange?: (state: { canUndo: boolean; canRedo: boolean }) => void;
+    onToolChange?: (tool: string) => void;
     onTextEditRequest?: (request: TextEditRequest) => void;
   }
 

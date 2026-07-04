@@ -59,6 +59,15 @@
   color: white;
 }
 
+/* Line-drawn icons take the button's text color (ink at rest, white when
+   active) and a fixed size so inline SVGs don't balloon. */
+.icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+  flex-shrink: 0;
+}
+
 .color-btn {
   width: 28px;
   height: 28px;
@@ -99,6 +108,9 @@
 
 .done-btn,
 .cancel-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 8px 20px;
   border: none;
   border-radius: 6px;

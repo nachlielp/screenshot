@@ -162,15 +162,14 @@ function hitTest(annotation, point, tolerance, ctx) {
     const top = Math.min(p0.y, p1.y);
     const right = Math.max(p0.x, p1.x);
     const bottom = Math.max(p0.y, p1.y);
-    const nearX = point.x >= left - tol && point.x <= right + tol;
-    const nearY = point.y >= top - tol && point.y <= bottom + tol;
-    if (!nearX || !nearY) return false;
-    // Border hit only, so clicks inside a big rect still reach shapes below
+    // Filled hit: clicking anywhere inside the rectangle (or near its border)
+    // grabs it, so it can be selected and moved like the other shapes. The
+    // topmost annotation still wins, so overlapping shapes stay reachable.
     return (
-      Math.abs(point.x - left) <= tol ||
-      Math.abs(point.x - right) <= tol ||
-      Math.abs(point.y - top) <= tol ||
-      Math.abs(point.y - bottom) <= tol
+      point.x >= left - tol &&
+      point.x <= right + tol &&
+      point.y >= top - tol &&
+      point.y <= bottom + tol
     );
   }
 
@@ -315,6 +314,7 @@ export class AnnotationEngine {
    *   onChange?: () => void,
    *   onSelectionChange?: (annotation: object | null) => void,
    *   onHistoryChange?: (state: {canUndo: boolean, canRedo: boolean}) => void,
+   *   onToolChange?: (tool: string) => void,
    *   onTextEditRequest?: (request: {
    *     imagePoint: {x: number, y: number},
    *     clientX: number, clientY: number,
@@ -432,6 +432,7 @@ export class AnnotationEngine {
       this._emitSelection();
     }
     this.canvas.style.cursor = tool === 'select' ? 'default' : 'crosshair';
+    this.options.onToolChange?.(tool);
     this.render();
   }
 
@@ -818,7 +819,10 @@ export class AnnotationEngine {
       }
       this.selectedId = annotation.id;
       this._snapshot();
-      this.render();
+      // Return to the select tool so the shape just drawn can be grabbed and
+      // moved right away (matches common editors like Excalidraw). setTool
+      // keeps the current selection when switching to 'select'.
+      this.setTool('select');
       this._emitSelection();
       return;
     }

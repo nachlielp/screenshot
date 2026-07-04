@@ -23,14 +23,57 @@ interface ImageEditorProps {
   saveRequestToken?: number;
 }
 
-const TOOLS: { key: string; label: string; title: string }[] = [
-  { key: 'select', label: '⤺', title: 'Select / Move (V)' },
-  { key: 'rect', label: '□', title: 'Rectangle (R)' },
-  { key: 'arrow', label: '↗', title: 'Arrow (A)' },
-  { key: 'line', label: '╱', title: 'Line (L)' },
-  { key: 'freehand', label: '✎', title: 'Pen (P)' },
-  { key: 'text', label: 'T', title: 'Text (T)' },
+const TOOLS: { key: string; title: string }[] = [
+  { key: 'select', title: 'Select / Move (V)' },
+  { key: 'rect', title: 'Rectangle (R)' },
+  { key: 'arrow', title: 'Arrow (A)' },
+  { key: 'line', title: 'Line (L)' },
+  { key: 'freehand', title: 'Pen (P)' },
+  { key: 'text', title: 'Text (T)' },
 ];
+
+// Line-drawn icons on a 24px grid (pink-posthog style): fill none,
+// currentColor stroke, round caps/joins — matches the extension editor.
+function ToolIcon({ name }: { name: string }) {
+  const p = {
+    className: 'icon',
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.8,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+  };
+  switch (name) {
+    case 'select':
+      return <svg {...p}><path d="m4 3 7 17 2.5-7L20.5 10.5z" /></svg>;
+    case 'crop':
+      return <svg {...p}><path d="M6 2v14a2 2 0 0 0 2 2h14" /><path d="M2 6h14a2 2 0 0 1 2 2v14" /></svg>;
+    case 'rect':
+      return <svg {...p}><rect x="4" y="6" width="16" height="12" rx="1.5" /></svg>;
+    case 'arrow':
+      return <svg {...p}><path d="M5 19 19 5" /><path d="M9 5h10v10" /></svg>;
+    case 'line':
+      return <svg {...p}><path d="M5 19 19 5" /></svg>;
+    case 'freehand':
+      return <svg {...p}><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>;
+    case 'text':
+      return <svg {...p}><path d="M5 7V5h14v2" /><path d="M12 5v14" /><path d="M9 19h6" /></svg>;
+    case 'delete':
+      return <svg {...p}><path d="M4 7h16" /><path d="M9 7V4h6v3" /><path d="M10 11v6M14 11v6" /><path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" /></svg>;
+    case 'undo':
+      return <svg {...p}><path d="M9 14 4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-4" /></svg>;
+    case 'redo':
+      return <svg {...p}><path d="m15 14 5-5-5-5" /><path d="M20 9H9a5 5 0 0 0 0 10h4" /></svg>;
+    case 'copy':
+      return <svg {...p}><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h8" /></svg>;
+    case 'check':
+      return <svg {...p}><path d="M5 12l5 5 9-11" /></svg>;
+    default:
+      return null;
+  }
+}
 
 const COLORS = [
   { value: '#ef4444', label: 'Red' },
@@ -75,6 +118,9 @@ export function ImageEditor({
     const engine = new AnnotationEngine(canvas, {
       enableCrop,
       onHistoryChange: setHistoryState,
+      // Keep the toolbar in sync when the engine changes tools itself — e.g.
+      // it auto-returns to 'select' after a shape is drawn.
+      onToolChange: (tool) => setActiveTool(tool),
       onSelectionChange: (annotation) => {
         setHasSelection(Boolean(annotation));
         if (annotation) {
@@ -242,7 +288,7 @@ export function ImageEditor({
               onClick={() => selectTool('crop')}
               title="Crop"
             >
-              ✂️
+              <ToolIcon name="crop" />
             </button>
           )}
           {TOOLS.map((tool) => (
@@ -252,7 +298,7 @@ export function ImageEditor({
               onClick={() => selectTool(tool.key)}
               title={tool.title}
             >
-              {tool.label}
+              <ToolIcon name={tool.key} />
             </button>
           ))}
           <button
@@ -261,7 +307,7 @@ export function ImageEditor({
             disabled={!hasSelection}
             title="Delete selected (⌫)"
           >
-            🗑
+            <ToolIcon name="delete" />
           </button>
         </div>
 
@@ -309,7 +355,7 @@ export function ImageEditor({
             disabled={!historyState.canUndo}
             title="Undo (⌘Z)"
           >
-            ↶
+            <ToolIcon name="undo" />
           </button>
           <button
             className="tool-btn"
@@ -317,16 +363,16 @@ export function ImageEditor({
             disabled={!historyState.canRedo}
             title="Redo (⌘⇧Z)"
           >
-            ↷
+            <ToolIcon name="redo" />
           </button>
           <button className="tool-btn" onClick={() => void copyToClipboard()} title="Copy (⌘C)">
-            📋
+            <ToolIcon name="copy" />
           </button>
         </div>
 
         {onSave && showSaveButton && (
           <button className="done-btn" onClick={() => void handleSave()}>
-            ✓ Save
+            <ToolIcon name="check" /> Save
           </button>
         )}
         {onCancel && (

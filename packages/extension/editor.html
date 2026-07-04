@@ -337,44 +337,44 @@
   <div id="toolbar-header" style="display: none;">
     <div id="toolbar">
       <button class="tool-btn" id="undo-btn" title="Undo" disabled>
-        <span>↩</span>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-4"/></svg>
       </button>
       <button class="tool-btn" id="redo-btn" title="Redo" disabled>
-        <span>↪</span>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h4"/></svg>
       </button>
 
       <div class="tool-separator"></div>
 
       <button class="tool-btn active" id="select-btn" title="Select / Move (V)">
-        <span>⤺</span>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4 3 7 17 2.5-7L20.5 10.5z"/></svg>
       </button>
       <button class="tool-btn" id="crop-btn" title="Crop">
-        <span>✂️</span>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M2 6h14a2 2 0 0 1 2 2v14"/></svg>
       </button>
       <button class="tool-btn rectangle-btn" id="rectangle-btn" title="Rectangle (R)">
-        <span>□</span>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="1.5"/></svg>
       </button>
       <button class="tool-btn" id="arrow-btn" title="Arrow (A)">
-        <span>↗️</span>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19 19 5"/><path d="M9 5h10v10"/></svg>
       </button>
       <button class="tool-btn" id="line-btn" title="Line (L)">
-        <span>╱</span>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19 19 5"/></svg>
       </button>
       <button class="tool-btn" id="freehand-btn" title="Pen (P)">
-        <span>✎</span>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
       </button>
       <button class="tool-btn" id="text-btn" title="Text (T)">
-        <span>T</span>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7V5h14v2"/><path d="M12 5v14"/><path d="M9 19h6"/></svg>
       </button>
       <button class="tool-btn" id="delete-btn" title="Delete selected (⌫)" disabled>
-        <span>🗑</span>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/></svg>
       </button>
 
       <div class="tool-separator"></div>
 
-      <div style="display: flex; align-items: center; gap: 8px; color: #333; font-size: 13px;">
+      <div style="display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 13px;">
         <label for="thickness-slider" style="display: flex; align-items: center; gap: 6px;">
-          <span>━</span>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M4 12h16"/></svg>
           <input type="range" id="thickness-slider" min="5" max="14" value="7" style="width: 80px;">
         </label>
         <span id="thickness-value" style="min-width: 25px;">7px</span>
@@ -382,8 +382,8 @@
 
       <div class="tool-separator"></div>
 
-      <div style="display: flex; align-items: center; gap: 8px; color: #333; font-size: 13px;">
-        <label for="font-size-slider" style="display: flex; align-items: center; gap: 6px;">
+      <div style="display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 13px;">
+        <label for="font-size-slider" style="display: flex; align-items: center; gap: 6px; font-weight: 800;">
           <span>A</span>
           <input type="range" id="font-size-slider" min="12" max="48" value="20" style="width: 80px;">
         </label>
@@ -405,15 +405,15 @@
       <div class="tool-separator"></div>
 
       <button class="tool-btn" id="copy-btn" title="Copy to clipboard">
-        <span>📋</span>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg>
         <span>Copy</span>
       </button>
       <button class="tool-btn" id="done-btn" title="Upload screenshot">
-        <span>✓</span>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4"/><path d="M7 9l5-5 5 5"/><path d="M5 20h14"/></svg>
         <span>Upload</span>
       </button>
       <button class="tool-btn" id="upload-with-logs-btn" title="Upload screenshot with logs and network">
-        <span>⇪</span>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/></svg>
         <span>Upload with logs &amp; network</span>
       </button>
     </div>
