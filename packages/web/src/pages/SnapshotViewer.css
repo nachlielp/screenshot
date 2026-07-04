@@ -243,6 +243,11 @@
 .sv-content.no-data-pane .sv-screenshot-card {
   flex: 1 1 100%;
   width: 100%;
+  /* no-data-pane makes .sv-content display:block, so flex no longer bounds the
+     card's height — pin it to the content area so a tall image scrolls inside
+     the viewer instead of overflowing and being clipped by the page. */
+  height: 100%;
+  min-height: 0;
 }
 
 .sv-data-card {

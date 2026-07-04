@@ -855,7 +855,7 @@ export default function SnapshotViewer() {
         <section className="sv-screenshot-card">
           <div className="sv-image-section">
             <div className={`sv-image-controls${editMode ? " is-inline" : ""}`}>
-              {canEdit && (
+              {canEdit && hasDiagnosticsPanel && (
                 <>
                   <button
                     className={`sv-control-btn ${markMode ? "active" : ""}`}
