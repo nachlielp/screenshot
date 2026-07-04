@@ -5,6 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Preview</title>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,400..900;1,400..900&display=swap');
+
+    :root {
+      --paper: #faedf0;
+      --paper-dark: #f2dbe1;
+      --ink: #151515;
+      --muted: #6f5b61;
+      --line: #e4c8cf;
+      --line-strong: #c9a0ab;
+      --brand: #f54e00;
+      --brand-dark: #b23800;
+      --danger: #b91c1c;
+      --font-sans: "Archivo", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
     * {
       margin: 0;
       padding: 0;
@@ -16,9 +31,9 @@
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-      background: #f7f8fa;
-      color: #1a1a1a;
+      font-family: var(--font-sans);
+      background: var(--paper);
+      color: var(--ink);
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -39,11 +54,11 @@
     .preview-container {
       width: 100%;
       max-width: 100%;
-      background: white;
-      border: 1px solid #e0e0e0;
-      border-radius: 12px;
+      background: #fff;
+      border: 1.5px solid var(--line);
+      border-radius: 10px;
       overflow: hidden;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 2px 0 rgba(0, 0, 0, 0.06);
     }
 
     video, img {
@@ -66,7 +81,7 @@
       font-size: 16px;
       font-weight: 600;
       border: none;
-      border-radius: 8px;
+      border-radius: 6px;
       cursor: pointer;
       transition: all 0.2s;
       display: flex;
@@ -80,29 +95,36 @@
     }
 
     .btn-download {
-      background: #f5f5f5;
-      color: #333;
-      border: 1px solid #ddd;
+      background: #fff;
+      color: var(--ink);
+      border: 1.5px solid var(--line-strong);
     }
 
     .btn-download:hover:not(:disabled) {
-      background: #e0e0e0;
-      border-color: #FFC107;
+      background: var(--paper-dark);
+      border-color: var(--brand);
       transform: translateY(-1px);
     }
 
     .btn-share {
-      background: #FFC107;
-      color: #1a1a1a;
+      background: var(--brand);
+      color: #fff;
+      border: 1.5px solid var(--brand-dark);
+      box-shadow: 0 2px 0 var(--brand-dark);
     }
 
     .btn-share:hover:not(:disabled) {
-      background: #FFD54F;
+      background: var(--brand);
       transform: translateY(-1px);
     }
 
+    .btn-share:active:not(:disabled) {
+      transform: translateY(2px);
+      box-shadow: none;
+    }
+
     .btn-share.copied {
-      background: #FFD54F;
+      background: var(--brand-dark);
     }
 
     .spinner {
@@ -119,7 +141,7 @@
     }
 
     .error {
-      background: #ef4444;
+      background: var(--danger);
       color: white;
       padding: 16px 24px;
       border-radius: 8px;
@@ -129,13 +151,13 @@
 
     .link-display {
       display: none;
-      background: #fffef5;
-      border: 1px solid #FFC107;
+      background: #fff;
+      border: 1.5px solid var(--brand);
       padding: 12px 16px;
       border-radius: 8px;
       font-family: monospace;
       font-size: 14px;
-      color: #1a1a1a;
+      color: var(--ink);
       word-break: break-all;
       max-width: 600px;
       text-align: center;
@@ -151,11 +173,11 @@
       width: 100%;
       flex-direction: column;
       gap: 12px;
-      background: white;
-      border: 1px solid #e0e0e0;
-      border-radius: 12px;
+      background: #fff;
+      border: 1.5px solid var(--line);
+      border-radius: 10px;
       padding: 14px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+      box-shadow: 0 2px 0 rgba(0, 0, 0, 0.06);
     }
 
     .review-bar.show {
@@ -174,14 +196,14 @@
       border: 2px solid transparent;
       border-radius: 6px;
       overflow: hidden;
-      background: #eee;
+      background: var(--paper-dark);
       flex: 0 0 auto;
       cursor: pointer;
       position: relative;
     }
 
     .filmstrip button:hover {
-      border-color: #FFC107;
+      border-color: var(--brand);
     }
 
     .filmstrip img {
@@ -211,31 +233,39 @@
 
     .review-actions .hint {
       font-size: 13px;
-      color: #6b7280;
+      color: var(--muted);
     }
 
     .btn-snap {
-      background: #1a1a1a;
-      color: white;
+      background: #fff;
+      color: var(--ink);
+      border: 1.5px solid var(--line-strong);
       padding: 10px 20px;
       font-size: 14px;
     }
 
     .btn-snap:hover:not(:disabled) {
-      background: #333;
+      background: var(--paper-dark);
       transform: translateY(-1px);
     }
 
     .btn-annotate {
-      background: #FFC107;
-      color: #1a1a1a;
+      background: var(--brand);
+      color: #fff;
+      border: 1.5px solid var(--brand-dark);
+      box-shadow: 0 2px 0 var(--brand-dark);
       padding: 10px 20px;
       font-size: 14px;
     }
 
     .btn-annotate:hover:not(:disabled) {
-      background: #FFD54F;
+      background: var(--brand);
       transform: translateY(-1px);
+    }
+
+    .btn-annotate:active:not(:disabled) {
+      transform: translateY(2px);
+      box-shadow: none;
     }
   </style>
 </head>

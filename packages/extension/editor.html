@@ -5,6 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Edit Screenshot</title>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,400..900;1,400..900&family=Source+Code+Pro:wght@400..700&display=swap');
+
+    :root {
+      --paper: #faedf0;
+      --paper-dark: #f2dbe1;
+      --ink: #151515;
+      --muted: #6f5b61;
+      --line: #e4c8cf;
+      --line-strong: #c9a0ab;
+      --brand: #f54e00;
+      --brand-dark: #b23800;
+      --font-sans: "Archivo", ui-sans-serif, system-ui, -apple-system,
+        BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
     * {
       margin: 0;
       padding: 0;
@@ -16,9 +31,10 @@
     }
 
     body {
-      background: #f5f5f5;
+      background: var(--paper);
       overflow: hidden;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-family: var(--font-sans);
+      color: var(--ink);
       width: 100%;
       height: 100vh;
       display: flex;
@@ -26,20 +42,19 @@
     }
 
     #toolbar-header {
-      background: rgba(255, 255, 255, 0.98);
-      backdrop-filter: blur(10px);
+      background: #fff;
       padding: 12px 20px;
       display: flex;
       justify-content: center;
       align-items: center;
-      border-bottom: 2px solid #FFC107;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      border-bottom: 1.5px solid var(--line);
+      box-shadow: 0 2px 0 rgba(0, 0, 0, 0.06);
       flex-shrink: 0;
     }
 
     #toolbar {
       background: transparent;
-      border-radius: 12px;
+      border-radius: 8px;
       padding: 8px 12px;
       display: flex;
       flex-wrap: wrap;
@@ -51,15 +66,17 @@
     .tool-btn {
       background: transparent;
       border: none;
-      color: #333;
+      color: var(--ink);
       cursor: pointer;
       padding: 8px 12px;
       border-radius: 6px;
+      font-family: inherit;
       font-size: 14px;
+      font-weight: 700;
       display: flex;
       align-items: center;
       gap: 6px;
-      transition: background 0.2s;
+      transition: background 0.15s ease;
       user-select: none;
     }
     .rectangle-btn{
@@ -67,12 +84,12 @@
     }
 
     .tool-btn:hover {
-      background: #fffef5;
+      background: var(--paper-dark);
     }
 
     .tool-btn.active {
-      background: #FFC107;
-      color: #1a1a1a;
+      background: var(--brand);
+      color: #fff;
     }
 
     .tool-btn:disabled {
@@ -83,7 +100,7 @@
     .tool-separator {
       width: 1px;
       height: 24px;
-      background: #e0e0e0;
+      background: var(--line);
       margin: 0 4px;
     }
 
@@ -93,6 +110,7 @@
       margin-left: 4px;
     }
 
+    /* Swatch fills are functional drawing colors (set inline) — do not re-hue. */
     .color-btn {
       width: 24px;
       height: 24px;
@@ -103,8 +121,8 @@
     }
 
     .color-btn.active {
-      border-color: #FFC107;
-      box-shadow: 0 0 0 2px rgba(255, 193, 7, 0.3);
+      border-color: var(--brand);
+      box-shadow: 0 0 0 2px rgba(245, 78, 0, 0.3);
     }
 
     #canvas-container {
@@ -138,12 +156,12 @@
     }
 
     #text-input {
-      font-family: Arial, sans-serif;
+      font-family: Arial, sans-serif; /* matches canvas text rendering — keep */
       font-size: 20px;
       padding: 4px 8px;
-      border: 2px solid #FFC107;
-      background: white;
-      border-radius: 4px;
+      border: 2px solid var(--brand);
+      background: #fff;
+      border-radius: 6px;
       outline: none;
       min-width: 100px;
     }
@@ -154,24 +172,26 @@
     }
 
     #done-btn {
-      background: #FFC107;
-      color: #1a1a1a;
+      background: var(--brand);
+      color: #fff;
       margin-left: 4px;
-      font-weight: 600;
+      font-weight: 700;
     }
 
     #done-btn:hover {
-      background: #FFD54F;
+      background: var(--brand);
+      filter: brightness(1.06);
     }
 
     #upload-with-logs-btn {
-      background: #fff7db;
-      color: #5b4300;
-      font-weight: 600;
+      background: var(--paper-dark);
+      color: var(--ink);
+      font-weight: 700;
     }
 
     #upload-with-logs-btn:hover {
-      background: #ffefb3;
+      background: var(--paper-dark);
+      filter: brightness(0.97);
     }
 
     .spinner {
@@ -190,7 +210,7 @@
     input[type="range"] {
       -webkit-appearance: none;
       appearance: none;
-      background: #e0e0e0;
+      background: var(--line);
       border-radius: 3px;
       height: 4px;
       outline: none;
@@ -202,7 +222,7 @@
       width: 14px;
       height: 14px;
       border-radius: 50%;
-      background: #FFC107;
+      background: var(--brand);
       cursor: pointer;
     }
 
@@ -210,7 +230,7 @@
       width: 14px;
       height: 14px;
       border-radius: 50%;
-      background: #FFC107;
+      background: var(--brand);
       cursor: pointer;
       border: none;
     }
@@ -220,7 +240,7 @@
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      color: #333;
+      color: var(--ink);
       font-size: 18px;
       z-index: 2000;
     }
@@ -232,8 +252,7 @@
       align-items: center;
       justify-content: center;
       padding: 24px;
-      background: rgba(17, 17, 17, 0.45);
-      backdrop-filter: blur(10px);
+      background: rgba(21, 21, 21, 0.5);
       z-index: 3000;
     }
 
@@ -243,29 +262,31 @@
 
     .confirm-modal {
       width: min(100%, 420px);
-      background: linear-gradient(180deg, #ffffff 0%, #fffdf5 100%);
-      border: 1px solid rgba(255, 193, 7, 0.35);
-      border-radius: 20px;
-      box-shadow: 0 28px 70px rgba(0, 0, 0, 0.28);
+      background: #fff;
+      border: 1.5px solid var(--line);
+      border-radius: 10px;
+      box-shadow: 0 2px 0 rgba(0, 0, 0, 0.06);
       padding: 24px;
     }
 
     .confirm-accent {
       width: 56px;
       height: 6px;
-      border-radius: 999px;
-      background: linear-gradient(90deg, #FFC107 0%, #FF8F00 100%);
+      border-radius: 6px;
+      background: var(--brand);
       margin-bottom: 18px;
     }
 
     .confirm-modal h2 {
       font-size: 24px;
-      color: #1a1a1a;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: var(--ink);
       margin-bottom: 10px;
     }
 
     .confirm-modal p {
-      color: #5c5c5c;
+      color: var(--muted);
       line-height: 1.5;
       font-size: 15px;
     }
@@ -278,38 +299,35 @@
     }
 
     .confirm-btn {
-      border: none;
-      border-radius: 10px;
+      border: 1.5px solid var(--line-strong);
+      border-radius: 6px;
       padding: 10px 16px;
+      font-family: inherit;
       font-size: 14px;
-      font-weight: 600;
+      font-weight: 700;
       cursor: pointer;
-      transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
-    }
-
-    .confirm-btn:hover {
-      transform: translateY(-1px);
+      transition: filter 0.15s ease, background 0.15s ease, border-color 0.15s ease;
     }
 
     .confirm-btn.cancel {
       background: #fff;
-      color: #333;
-      border: 1px solid #ddd;
+      color: var(--ink);
+      border: 1.5px solid var(--line-strong);
     }
 
     .confirm-btn.cancel:hover {
-      border-color: #FFC107;
-      box-shadow: 0 8px 18px rgba(255, 193, 7, 0.12);
+      border-color: var(--brand);
+      color: var(--brand);
     }
 
     .confirm-btn.confirm {
-      background: #FFC107;
-      color: #1a1a1a;
+      background: var(--brand);
+      color: #fff;
+      border-color: var(--brand-dark);
     }
 
     .confirm-btn.confirm:hover {
-      background: #FFD54F;
-      box-shadow: 0 10px 22px rgba(255, 193, 7, 0.2);
+      filter: brightness(1.06);
     }
   </style>
 </head>

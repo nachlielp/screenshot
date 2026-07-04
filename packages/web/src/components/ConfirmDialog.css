@@ -6,16 +6,16 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(17, 17, 17, 0.42);
+  background: rgba(21, 21, 21, 0.5);
   backdrop-filter: blur(10px);
 }
 
 .confirm-dialog {
   width: min(100%, 420px);
-  background: linear-gradient(180deg, #ffffff 0%, #fffdf5 100%);
-  border: 1px solid rgba(255, 193, 7, 0.3);
+  background: #fff;
+  border: 1.5px solid var(--line);
   border-radius: 20px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, .06);
   padding: 24px;
   position: relative;
 }
@@ -24,7 +24,7 @@
   width: 56px;
   height: 6px;
   border-radius: 999px;
-  background: linear-gradient(90deg, #ffc107 0%, #ff8f00 100%);
+  background: var(--brand);
   margin-bottom: 18px;
 }
 
@@ -32,13 +32,13 @@
   font-size: 24px;
   line-height: 1.1;
   margin-bottom: 10px;
-  color: #1a1a1a;
+  color: var(--ink);
 }
 
 .confirm-dialog p {
   font-size: 15px;
   line-height: 1.5;
-  color: #5c5c5c;
+  color: var(--muted);
 }
 
 .confirm-dialog-actions {
@@ -70,33 +70,33 @@
 
 .confirm-dialog-btn-secondary {
   background: #fff;
-  color: #333;
-  border: 1px solid #ddd;
+  color: var(--ink);
+  border: 1.5px solid var(--line);
 }
 
 .confirm-dialog-btn-secondary:hover:not(:disabled) {
-  border-color: #ffc107;
-  box-shadow: 0 8px 18px rgba(255, 193, 7, 0.12);
+  border-color: var(--brand);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, .06);
 }
 
 .confirm-dialog-btn-default {
-  background: #ffc107;
-  color: #1a1a1a;
+  background: var(--brand);
+  color: #fff;
 }
 
 .confirm-dialog-btn-default:hover:not(:disabled) {
-  background: #ffd54f;
-  box-shadow: 0 10px 22px rgba(255, 193, 7, 0.2);
+  background: var(--brand-dark);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, .06);
 }
 
 .confirm-dialog-btn-danger {
-  background: #f05d5e;
+  background: var(--danger);
   color: #fff;
 }
 
 .confirm-dialog-btn-danger:hover:not(:disabled) {
-  background: #e04849;
-  box-shadow: 0 10px 22px rgba(240, 93, 94, 0.22);
+  background: var(--danger-dark);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, .06);
 }
 
 @media (max-width: 640px) {

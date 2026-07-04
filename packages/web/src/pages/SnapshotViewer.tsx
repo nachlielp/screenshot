@@ -2495,7 +2495,7 @@ function truncateText(text: string, maxLength: number) {
 
 function renderHeaders(headers?: Record<string, string>) {
   if (!headers || Object.keys(headers).length === 0) {
-    return <em style={{ color: "#999" }}>None</em>;
+    return <em style={{ color: "var(--muted)" }}>None</em>;
   }
 
   return (

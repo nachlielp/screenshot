@@ -1,10 +1,9 @@
 .cl-page {
   min-height: 100vh;
-  background: #f7f8fa;
+  background: var(--paper);
   padding: 48px 20px 80px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
-    Ubuntu, Cantarell, sans-serif;
-  color: #1a1a1a;
+  font-family: var(--font-sans);
+  color: var(--ink);
 }
 
 /* ── Hero ── */
@@ -19,7 +18,7 @@
   letter-spacing: 0.14em;
   font-size: 12px;
   font-weight: 700;
-  color: #b45309;
+  color: var(--brand-dark);
   margin-bottom: 10px;
 }
 
@@ -32,14 +31,14 @@
 .cl-summary {
   font-size: 16.5px;
   line-height: 1.6;
-  color: #4b5563;
+  color: var(--muted);
   max-width: 620px;
   margin: 0 auto 14px;
 }
 
 .cl-totals {
   font-size: 13.5px;
-  color: #6b7280;
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -58,7 +57,7 @@
   top: 8px;
   bottom: 8px;
   width: 2px;
-  background: linear-gradient(to bottom, #fbbf24, #e5e7eb 70%);
+  background: linear-gradient(to bottom, var(--brand), var(--line) 70%);
   border-radius: 2px;
 }
 
@@ -75,32 +74,32 @@
   height: 44px;
   border-radius: 50%;
   background: #ffffff;
-  border: 2px solid #e5e7eb;
+  border: 1.5px solid var(--line);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 19px;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.06);
 }
 
-.cl-feature .cl-marker { border-color: #fbbf24; }
+.cl-feature .cl-marker { border-color: var(--brand); }
 .cl-fix .cl-marker { border-color: #f87171; }
-.cl-stability .cl-marker { border-color: #60a5fa; }
-.cl-wip .cl-marker { border-color: #d1d5db; }
+.cl-stability .cl-marker { border-color: var(--brand); }
+.cl-wip .cl-marker { border-color: var(--line-strong); }
 
 /* ── Cards ── */
 .cl-card {
   background: #ffffff;
-  border: 1px solid #ececec;
-  border-radius: 14px;
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
   padding: 22px 24px 18px;
-  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.06);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .cl-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.1);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.06);
 }
 
 .cl-card-header {
@@ -120,22 +119,22 @@
   border-radius: 999px;
 }
 
-.cl-badge-feature { background: #fef3c7; color: #92400e; }
-.cl-badge-fix { background: #fee2e2; color: #b91c1c; }
-.cl-badge-stability { background: #dbeafe; color: #1d4ed8; }
-.cl-badge-wip { background: #f3f4f6; color: #6b7280; }
+.cl-badge-feature { background: var(--paper-dark); color: var(--brand-dark); }
+.cl-badge-fix { background: #fee2e2; color: var(--danger); }
+.cl-badge-stability { background: var(--paper-dark); color: var(--brand); }
+.cl-badge-wip { background: var(--paper-dark); color: var(--muted); }
 
 .cl-date {
   font-size: 13px;
-  color: #6b7280;
+  color: var(--muted);
 }
 
 .cl-hash {
   margin-left: auto;
   font-size: 12px;
-  color: #9ca3af;
-  background: #f9fafb;
-  border: 1px solid #f0f0f0;
+  color: var(--muted);
+  background: var(--paper);
+  border: 1.5px solid var(--line);
   border-radius: 6px;
   padding: 2px 8px;
 }
@@ -150,7 +149,7 @@
 .cl-card-summary {
   font-size: 14.5px;
   line-height: 1.6;
-  color: #4b5563;
+  color: var(--muted);
   margin-bottom: 12px;
 }
 
@@ -168,7 +167,7 @@
   padding-left: 22px;
   font-size: 14px;
   line-height: 1.5;
-  color: #374151;
+  color: var(--muted);
 }
 
 .cl-highlights li::before {
@@ -179,19 +178,19 @@
   width: 7px;
   height: 7px;
   border-radius: 2px;
-  background: #fbbf24;
+  background: var(--brand);
   transform: rotate(45deg);
 }
 
 .cl-fix .cl-highlights li::before { background: #f87171; }
-.cl-stability .cl-highlights li::before { background: #60a5fa; }
+.cl-stability .cl-highlights li::before { background: var(--brand); }
 
 /* ── Footer stats ── */
 .cl-card-footer {
   display: flex;
   align-items: center;
   gap: 12px;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1.5px solid var(--line);
   padding-top: 12px;
 }
 
@@ -207,17 +206,17 @@
 .cl-statbar-added {
   display: block;
   height: 100%;
-  background: #4ade80;
+  background: var(--success);
 }
 
 .cl-stats-text {
   font-size: 12.5px;
-  color: #6b7280;
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 
-.cl-added { color: #16a34a; font-weight: 600; }
-.cl-removed { color: #dc2626; font-weight: 600; }
+.cl-added { color: var(--success); font-weight: 600; }
+.cl-removed { color: var(--danger); font-weight: 600; }
 
 /* ── Responsive ── */
 @media (max-width: 560px) {
