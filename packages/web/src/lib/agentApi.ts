@@ -1,20 +1,14 @@
 // The deployed app proxies /api/* to Convex's HTTP-actions domain (see
 // packages/web/vercel.json), so agent URLs live on the same domain as the
-// share link — no separate api subdomain or DNS setup. Allow an explicit
-// override, and fall back to the deployment's `.convex.site` domain in local
-// dev where no proxy sits in front of vite.
+// share link — no separate api subdomain or DNS setup. In local dev no proxy
+// sits in front of vite, so fall back to the deployment's `.convex.site`
+// domain.
 export function getAgentApiBase(): string {
-  const explicit = import.meta.env.VITE_CONVEX_SITE_URL;
-  if (explicit) return explicit.replace(/\/$/, "");
   if (!import.meta.env.DEV) return window.location.origin;
   return import.meta.env.VITE_CONVEX_URL.replace(
     ".convex.cloud",
     ".convex.site"
   ).replace(/\/$/, "");
-}
-
-export function buildSnapshotAgentUrl(shareToken: string): string {
-  return `${getAgentApiBase()}/api/snapshot/${shareToken}`;
 }
 
 // A self-contained instruction block a user can paste into any AI agent so it

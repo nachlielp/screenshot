@@ -38,6 +38,9 @@ from pathlib import Path
 # API URLs share the viewer's domain. Override with --base or SNAPSHOT_API_BASE
 # for other deployments (e.g. a dev/staging Convex instance's .convex.site).
 DEFAULT_API_BASE = "https://snap.nachli.com"
+# The Convex HTTP-actions domain behind the proxy — last resort in case the
+# app's /api rewrite is unavailable.
+FALLBACK_API_BASE = "https://fiery-yak-273.convex.site"
 
 MEDIA_EXT = {
     "image/png": "png",
@@ -104,28 +107,48 @@ def main() -> None:
     args = parser.parse_args()
 
     token, base_from_url = parse_input(args.url)
-    base = (
-        args.base
-        or base_from_url
-        or os.environ.get("SNAPSHOT_API_BASE")
-        or (args.url.startswith("http") and discover_base_from_page(args.url))
-        or DEFAULT_API_BASE
-    )
-    base = base.rstrip("/")
 
-    api_url = f"{base}/api/snapshot/{token}"
-    try:
-        data = json.loads(http_get(api_url))
-    except urllib.error.HTTPError as e:
+    # Try bases in order until one serves the API. The current deployment
+    # serves /api on the app's own origin (Vercel rewrite), while older ones
+    # used the .convex.site domain — the lazy discovery step covers those.
+    def candidate_bases():
+        for b in (args.base, base_from_url, os.environ.get("SNAPSHOT_API_BASE")):
+            if b:
+                yield b.rstrip("/")
+        if args.url.startswith("http"):
+            discovered = discover_base_from_page(args.url)
+            if discovered:
+                yield discovered.rstrip("/")
+        yield DEFAULT_API_BASE
+        yield FALLBACK_API_BASE
+
+    tried: set[str] = set()
+    failures: list[str] = []
+    data = None
+    for base in candidate_bases():
+        if base in tried:
+            continue
+        tried.add(base)
+        api_url = f"{base}/api/snapshot/{token}"
         try:
-            detail = json.loads(e.read()).get("error", "")
-        except Exception:
-            detail = ""
-        sys.exit(f"Failed to fetch {api_url}: {e.code} {detail or e.reason}")
-    except Exception as e:
-        sys.exit(f"Failed to fetch {api_url}: {e}")
-    if "error" in data:
-        sys.exit(f"API error for {api_url}: {data['error']}")
+            payload = json.loads(http_get(api_url))
+        except urllib.error.HTTPError as e:
+            try:
+                detail = json.loads(e.read()).get("error", "")
+            except Exception:
+                detail = ""
+            failures.append(f"{api_url}: {e.code} {detail or e.reason}")
+            continue
+        except Exception as e:
+            failures.append(f"{api_url}: {e}")
+            continue
+        if "error" in payload:
+            failures.append(f"{api_url}: {payload['error']}")
+            continue
+        data = payload
+        break
+    if data is None:
+        sys.exit("Failed to fetch snapshot:\n  " + "\n  ".join(failures))
 
     out_dir = Path(args.out or f"snapshot-{token[:8]}")
     out_dir.mkdir(parents=True, exist_ok=True)
