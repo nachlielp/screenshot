@@ -80,6 +80,8 @@ export default function SnapshotViewer() {
   const persistMarkedView = useMutation(api.screenshots.saveMarkedView);
   const persistHiddenEntries = useMutation(api.screenshots.setHiddenLogEntries);
   const persistAnnotations = useMutation(api.screenshots.saveScreenshotAnnotations);
+  const generateUploadUrl = useMutation(api.screenshots.generateUploadUrl);
+  const replaceScreenshotImage = useMutation(api.screenshots.replaceScreenshotImage);
   const updateScreenshotTitle = useMutation(api.screenshots.updateScreenshotTitle);
   const viewIncremented = useRef(false);
   const initialViewSetRef = useRef(false);
@@ -459,11 +461,32 @@ export default function SnapshotViewer() {
     try {
       const nextAnnotations =
         result.annotations.length > 0 ? result.annotationsJson : undefined;
-      await persistAnnotations({ shareToken, annotations: nextAnnotations });
+      if (result.hasCrop && result.baseBlob) {
+        // A crop changes the base image itself: upload the cropped image
+        // (annotations stay vector) and swap it into the snapshot.
+        const uploadUrl = await generateUploadUrl();
+        const uploadResponse = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": result.baseBlob.type || "image/png" },
+          body: result.baseBlob,
+        });
+        if (!uploadResponse.ok) {
+          throw new Error(`Image upload failed (${uploadResponse.status})`);
+        }
+        const { storageId } = await uploadResponse.json();
+        await replaceScreenshotImage({
+          shareToken,
+          storageId,
+          annotations: nextAnnotations,
+          crop: result.crop ?? undefined,
+        });
+      } else {
+        await persistAnnotations({ shareToken, annotations: nextAnnotations });
+      }
       // Only leave edit mode once the save landed — closing first would
       // destroy the editor (and the unsaved work) on failure.
       setEditMode(false);
-      setMarkNotice("Annotations saved.");
+      setMarkNotice(result.hasCrop ? "Crop and annotations saved." : "Annotations saved.");
     } catch (error) {
       console.error("Failed to save annotations:", error);
       setMarkNotice("We couldn’t save the annotations — your edits are still open. Please try again.");
@@ -821,7 +844,7 @@ export default function SnapshotViewer() {
       >
         <section className="sv-screenshot-card">
           <div className="sv-image-section">
-            <div className={`sv-image-controls${editMode ? " is-inline" : ""}`}>
+            <div className="sv-image-controls">
               {canEdit && hasDiagnosticsPanel && (
                 <>
                   <Button
@@ -892,6 +915,7 @@ export default function SnapshotViewer() {
               <ImageEditor
                 imageUrl={displayImageUrl ?? screenshot.publicUrl}
                 initialAnnotations={snapshotAnnotations}
+                enableCrop
                 onSave={(result) => void handleEditorSave(result)}
                 onCancel={() => setEditMode(false)}
                 showSaveButton={false}

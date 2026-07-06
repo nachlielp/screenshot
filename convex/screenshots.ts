@@ -476,6 +476,68 @@ export const saveScreenshotAnnotations = mutation({
   },
 });
 
+// Swap in a new base image after a crop in the web editor. The cropped image
+// (annotations still vector, not burned in) is uploaded to storage first;
+// this points the snapshot at it, refreshes the denormalized URL/size, and
+// drops the old file.
+export const replaceScreenshotImage = mutation({
+  args: {
+    shareToken: v.string(),
+    storageId: v.id("_storage"),
+    annotations: v.optional(v.string()),
+    // The crop rectangle and the dimensions of the image it was applied to,
+    // used to remap percent-anchored marked-view highlights onto the new image.
+    crop: v.optional(
+      v.object({
+        x: v.number(),
+        y: v.number(),
+        width: v.number(),
+        height: v.number(),
+        imageWidth: v.number(),
+        imageHeight: v.number(),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    const screenshot = await requireOwnedScreenshot(ctx, args.shareToken);
+
+    const publicUrl = await ctx.storage.getUrl(args.storageId);
+    if (!publicUrl) {
+      throw new Error("Uploaded image not found");
+    }
+    const metadata = await ctx.db.system.get(args.storageId);
+
+    let markedView = screenshot.markedView;
+    if (markedView && args.crop && args.crop.width > 0 && args.crop.height > 0) {
+      const { x, y, width, height, imageWidth, imageHeight } = args.crop;
+      const clampPct = (n: number) => Math.min(100, Math.max(0, n));
+      markedView = {
+        ...markedView,
+        updatedAt: Date.now(),
+        items: markedView.items.map((item) => ({
+          ...item,
+          xPercent: clampPct((((item.xPercent / 100) * imageWidth - x) / width) * 100),
+          yPercent: clampPct((((item.yPercent / 100) * imageHeight - y) / height) * 100),
+        })),
+      };
+    }
+
+    const oldStorageId = screenshot.storageId;
+    await ctx.db.patch(screenshot._id, {
+      storageId: args.storageId,
+      publicUrl,
+      fileSize: metadata?.size ?? screenshot.fileSize,
+      mimeType: metadata?.contentType ?? screenshot.mimeType,
+      annotations: normalizeAnnotationsField(args.annotations),
+      markedView,
+    });
+
+    if (oldStorageId !== args.storageId) {
+      await ctx.storage.delete(oldStorageId).catch(() => {});
+    }
+  },
+});
+
 // Hide (or unhide) individual console/network log entries. The uploaded log
 // files stay immutable — this only records which entry indices the owner
 // cleaned up, so it is reversible and markedView indices stay valid.

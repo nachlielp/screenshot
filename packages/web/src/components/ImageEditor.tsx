@@ -12,6 +12,22 @@ export interface ImageEditorSaveResult {
   annotations: Annotation[];
   annotationsJson: string;
   blob: Blob;
+  hasCrop: boolean;
+  // The cropped image without annotations burned in — present only when the
+  // user cropped, so callers can replace the stored base image and keep the
+  // annotations as editable vectors on top of it.
+  baseBlob: Blob | null;
+  // Crop rectangle plus the dimensions of the image it was applied to, so
+  // callers can remap anything anchored to the old image (e.g. percent-based
+  // highlight positions).
+  crop: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    imageWidth: number;
+    imageHeight: number;
+  } | null;
 }
 
 interface ImageEditorProps {
@@ -210,11 +226,27 @@ export function ImageEditor({
     const engine = engineRef.current;
     if (!engine) return;
 
+    const hasCrop = engine.hasCrop;
     const blob = await engine.exportBlob('image/png');
+    const baseBlob = hasCrop ? await engine.exportBaseBlob('image/png') : null;
+    const crop =
+      hasCrop && engine.crop && engine.image
+        ? {
+            x: engine.crop.x,
+            y: engine.crop.y,
+            width: engine.crop.width,
+            height: engine.crop.height,
+            imageWidth: engine.image.naturalWidth,
+            imageHeight: engine.image.naturalHeight,
+          }
+        : null;
     onSave?.({
       annotations: engine.getAnnotations({ relativeToCrop: true }),
       annotationsJson: engine.serialize({ relativeToCrop: true }),
       blob,
+      hasCrop,
+      baseBlob,
+      crop,
     });
   }, [onSave]);
 
@@ -269,6 +301,7 @@ export function ImageEditor({
           l: 'line',
           p: 'freehand',
           t: 'text',
+          ...(enableCrop ? { c: 'crop' } : {}),
         };
         const tool = toolByKey[e.key.toLowerCase()];
         if (tool) selectTool(tool);
@@ -277,7 +310,7 @@ export function ImageEditor({
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [textEdit, commitTextEdit, copyToClipboard]);
+  }, [textEdit, commitTextEdit, copyToClipboard, enableCrop]);
 
   return (
     <div className="image-editor">
@@ -287,7 +320,7 @@ export function ImageEditor({
             <button
               className={`tool-btn ${activeTool === 'crop' ? 'active' : ''}`}
               onClick={() => selectTool('crop')}
-              title="Crop"
+              title="Crop (C)"
             >
               <ToolIcon name="crop" />
             </button>

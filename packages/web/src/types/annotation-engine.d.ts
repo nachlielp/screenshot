@@ -58,6 +58,8 @@ declare module "@shared/annotation-engine" {
     fontSize: number;
     readonly selectedAnnotation: Annotation | null;
     readonly hasCrop: boolean;
+    readonly crop: { x: number; y: number; width: number; height: number } | null;
+    readonly image: HTMLImageElement | null;
     loadImage(
       source: string | Blob,
       options?: { annotations?: Annotation[]; resetHistory?: boolean }
