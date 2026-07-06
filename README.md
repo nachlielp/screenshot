@@ -25,10 +25,10 @@ Screenshot is a Chrome extension plus a small React app for capturing screenshot
 
 ## Agent access (JSON API)
 
-Every shared snapshot is also available as plain JSON so an AI agent (or any script) can read the image, console logs, network logs, and metadata without opening the viewer UI. The API is served by a Convex HTTP action on the deployment's `.convex.site` domain and is gated by the same unguessable share token as the viewer link — no auth needed.
+Every shared snapshot is also available as plain JSON so an AI agent (or any script) can read the image, console logs, network logs, and metadata without opening the viewer UI. The API lives on the **same domain as the app** — a Vercel rewrite (`packages/web/vercel.json`) proxies `/api/*` to the Convex HTTP action on `.convex.site`, so there's no separate api subdomain or DNS setup. Access is gated by the same unguessable share token as the viewer link — no auth needed.
 
 ```
-GET https://<deployment>.convex.site/api/snapshot/<shareToken>
+GET https://<app>/api/snapshot/<shareToken>
 ```
 
 Returns one JSON document with:
@@ -47,13 +47,13 @@ GET /api/snapshot/<shareToken>/image     # 302 redirect to the raw image/video
 GET /api/snapshot/<shareToken>/html      # 302 redirect to the captured HTML
 ```
 
-Ways to get the API URL from a viewer share link (`https://<app>/#/snapshot/<shareToken>`):
+There is only one link to share: the viewer link (`https://<app>/#/snapshot/<shareToken>`). Agents derive the API URL from it:
 
-- Click **🤖 Agent link** in the snapshot viewer toolbar — it copies the JSON URL.
-- Take the last path segment (the share token) and plug it into the endpoint above.
+- Same origin, drop the `#`: take the last path segment (the share token) and GET `/api/snapshot/<token>` on the link's own domain.
 - Agents can self-discover: fetching the share link returns the SPA's `index.html`, which contains a `<meta name="snapshot-agent-api">` tag describing the endpoint.
+- The `snapshot-debug` skill in `.claude/skills/` does this automatically — paste the viewer link and it fetches everything.
 
-Example agent prompt: "Fetch this QA snapshot and diagnose the bug: `https://<deployment>.convex.site/api/snapshot/<token>` — the JSON has the screenshot URL, console errors, and failed network requests."
+Example agent prompt: "Fetch this QA snapshot and diagnose the bug: `https://<app>/#/snapshot/<token>` — take the token and GET `https://<app>/api/snapshot/<token>` for the screenshot URL, console errors, and failed network requests."
 
 ## Quick start
 

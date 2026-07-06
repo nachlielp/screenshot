@@ -8,7 +8,6 @@ import { AnnotatedImage } from "../components/AnnotatedImage";
 import { Button } from "../components/Button";
 import { renderAnnotatedBlob } from "@shared/annotation-engine";
 import { buildAppUrl } from "../lib/routes";
-import { buildSnapshotAgentUrl } from "../lib/agentApi";
 import "./SnapshotViewer.css";
 
 type ViewMode = "info" | "console" | "network";
@@ -119,9 +118,6 @@ export default function SnapshotViewer() {
   const [draftTitle, setDraftTitle] = useState("");
   const [isSavingTitle, setIsSavingTitle] = useState(false);
   const [shareCopyState, setShareCopyState] = useState<"idle" | "copied" | "error">(
-    "idle"
-  );
-  const [agentCopyState, setAgentCopyState] = useState<"idle" | "copied" | "error">(
     "idle"
   );
   const [imageCopyState, setImageCopyState] = useState<"idle" | "copied" | "error">(
@@ -347,12 +343,6 @@ export default function SnapshotViewer() {
     const timeout = window.setTimeout(() => setShareCopyState("idle"), 2000);
     return () => window.clearTimeout(timeout);
   }, [shareCopyState]);
-
-  useEffect(() => {
-    if (agentCopyState === "idle") return;
-    const timeout = window.setTimeout(() => setAgentCopyState("idle"), 2000);
-    return () => window.clearTimeout(timeout);
-  }, [agentCopyState]);
 
   useEffect(() => {
     if (canEdit) return;
@@ -729,17 +719,6 @@ export default function SnapshotViewer() {
     }
   }
 
-  async function handleCopyAgentLink() {
-    if (!shareToken) return;
-
-    try {
-      await navigator.clipboard.writeText(buildSnapshotAgentUrl(shareToken));
-      setAgentCopyState("copied");
-    } catch {
-      setAgentCopyState("error");
-    }
-  }
-
   return (
     <div className="sv-container">
       <div className="sv-toolbar">
@@ -826,23 +805,6 @@ export default function SnapshotViewer() {
               : shareCopyState === "error"
                 ? "Copy failed"
                 : "Share"}
-          </Button>
-          <Button
-            variant={
-              agentCopyState === "copied"
-                ? "success"
-                : agentCopyState === "error"
-                  ? "danger"
-                  : "secondary"
-            }
-            onClick={() => void handleCopyAgentLink()}
-            title="Copy a JSON API link an AI agent can fetch (image, logs, network, metadata) without opening this page"
-          >
-            {agentCopyState === "copied"
-              ? "Copied link"
-              : agentCopyState === "error"
-                ? "Copy failed"
-                : "🤖 Agent link"}
           </Button>
           <span className="sv-view-count">
             👁 {screenshot.viewCount} viewer{screenshot.viewCount !== 1 ? "s" : ""}

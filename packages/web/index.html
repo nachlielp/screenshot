@@ -8,11 +8,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- Machine-readable access for AI agents: share links look like
          <app>/#/snapshot/{shareToken}. The same data (image URL, console
-         logs, network logs, metadata) is served as JSON by the endpoint
-         below — take the Convex URL, swap .convex.cloud for .convex.site. -->
+         logs, network logs, metadata) is served as JSON on this same
+         origin — resolve the path below against the share link's domain. -->
     <meta
       name="snapshot-agent-api"
-      content="%VITE_CONVEX_URL%/api/snapshot/{shareToken} (replace .convex.cloud with .convex.site in this URL)"
+      content="/api/snapshot/{shareToken} (relative to this page's origin)"
     />
     <title>Screenshot</title>
   </head>

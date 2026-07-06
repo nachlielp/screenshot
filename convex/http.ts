@@ -3,7 +3,10 @@ import { httpAction } from "./_generated/server";
 import { api } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 
-// Agent-facing JSON API, served on the deployment's `.convex.site` domain.
+// Agent-facing JSON API, served on the deployment's `.convex.site` domain and
+// proxied onto the web app's own domain at the same /api/* paths by a Vercel
+// rewrite (packages/web/vercel.json) — agent URLs share the viewer's domain,
+// no separate api subdomain or DNS setup.
 //
 //   GET /api/snapshot/<shareToken>          full JSON (metadata + inlined logs)
 //   GET /api/snapshot/<shareToken>/console  filtered console log array only

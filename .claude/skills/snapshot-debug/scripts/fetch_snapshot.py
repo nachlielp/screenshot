@@ -3,7 +3,8 @@
 
 Accepts any of:
   - a viewer share link:  https://<app>/#/snapshot/<shareToken>
-  - an agent API link:    https://<deployment>.convex.site/api/snapshot/<shareToken>
+                          (the API lives on the same origin, at /api/snapshot/…)
+  - a direct API link:    https://<app>/api/snapshot/<shareToken>
   - a bare share token:   32+ hex chars
 
 Usage:
@@ -33,9 +34,10 @@ import sys
 import urllib.request
 from pathlib import Path
 
-# Production Screenshot deployment. Override with --base or SNAPSHOT_API_BASE
-# for other deployments (e.g. a dev/staging Convex instance).
-DEFAULT_API_BASE = "https://fiery-yak-273.convex.site"
+# Production Screenshot app; it proxies /api/* to the Convex deployment, so
+# API URLs share the viewer's domain. Override with --base or SNAPSHOT_API_BASE
+# for other deployments (e.g. a dev/staging Convex instance's .convex.site).
+DEFAULT_API_BASE = "https://snap.nachli.com"
 
 MEDIA_EXT = {
     "image/png": "png",
@@ -66,10 +68,13 @@ def parse_input(raw: str) -> tuple[str, str | None]:
     if m:
         return m.group(2), m.group(1)
 
-    # Viewer link: .../#/snapshot/<token> or .../snapshot/<token>
+    # Viewer link: .../#/snapshot/<token> or .../snapshot/<token>. The API is
+    # served on the viewer's own origin (/api/snapshot/…), so the link gives
+    # us the base too.
     m = re.search(r"/snapshot/([0-9A-Za-z]{16,64})", raw)
     if m:
-        return m.group(1), None
+        origin = re.match(r"(https?://[^/]+)", raw)
+        return m.group(1), origin.group(1) if origin else None
 
     sys.exit(f"Could not find a share token in: {raw!r}")
 
@@ -80,10 +85,15 @@ def discover_base_from_page(page_url: str) -> str | None:
         html = http_get(page_url.split("#")[0], timeout=10).decode("utf-8", "replace")
     except Exception:
         return None
-    m = re.search(r'name="snapshot-agent-api"\s+content="(https?://[^/"]+)', html)
-    if not m:
+    if 'name="snapshot-agent-api"' not in html:
         return None
-    return m.group(1).replace(".convex.cloud", ".convex.site")
+    # Absolute endpoint (older deployments) — use its origin.
+    m = re.search(r'name="snapshot-agent-api"\s+content="(https?://[^/"]+)', html)
+    if m:
+        return m.group(1).replace(".convex.cloud", ".convex.site")
+    # Relative endpoint — the API is served on the page's own origin.
+    m = re.match(r"(https?://[^/]+)", page_url)
+    return m.group(1) if m else None
 
 
 def main() -> None:

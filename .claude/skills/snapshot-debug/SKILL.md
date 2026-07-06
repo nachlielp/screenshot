@@ -18,9 +18,11 @@ can act on.
 python3 scripts/fetch_snapshot.py "<link-or-token>" --out ./snapshot-data
 ```
 
-The script accepts a viewer link (`https://<app>/#/snapshot/<token>`), an
-agent API link (`https://<deployment>.convex.site/api/snapshot/<token>`), or a
-bare token. It writes `snapshot.json`, `console.json`, `network.json`, the
+The share link the user pastes is the only link needed — the JSON API lives on
+the same domain as the viewer, so the script extracts the token and talks to
+`<same-origin>/api/snapshot/<token>` itself. It accepts a viewer link
+(`https://<app>/#/snapshot/<token>`), a direct API link
+(`https://<app>/api/snapshot/<token>`), or a bare token. It writes `snapshot.json`, `console.json`, `network.json`, the
 media file, and (when stored) `page.html`, then prints a summary that already
 lists console errors and failed requests. Python 3 with no extra packages.
 

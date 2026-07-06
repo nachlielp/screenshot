@@ -1,9 +1,12 @@
-// Convex serves HTTP actions on the deployment's `.convex.site` domain,
-// while the client connects to `.convex.cloud`. Allow an explicit override
-// for custom domains, otherwise derive one from the other.
+// The deployed app proxies /api/* to Convex's HTTP-actions domain (see
+// packages/web/vercel.json), so agent URLs live on the same domain as the
+// share link — no separate api subdomain or DNS setup. Allow an explicit
+// override, and fall back to the deployment's `.convex.site` domain in local
+// dev where no proxy sits in front of vite.
 export function getAgentApiBase(): string {
   const explicit = import.meta.env.VITE_CONVEX_SITE_URL;
   if (explicit) return explicit.replace(/\/$/, "");
+  if (!import.meta.env.DEV) return window.location.origin;
   return import.meta.env.VITE_CONVEX_URL.replace(
     ".convex.cloud",
     ".convex.site"
@@ -28,6 +31,7 @@ Given a share link like:
   https://<app>/#/snapshot/<TOKEN>
 take <TOKEN> (the last path segment) and fetch:
   GET ${base}/api/snapshot/<TOKEN>
+(The API lives on the same domain as the share link itself.)
 
 The JSON response contains:
 - media.url        direct URL to the screenshot image or recording video
