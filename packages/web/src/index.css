@@ -17,8 +17,9 @@
   --muted: #6f5b61;         /* secondary text (pink-tinted gray) */
   --line: #e4c8cf;          /* borders — always 1.5px */
   --line-strong: #c9a0ab;   /* secondary button edges, dashed borders */
-  --brand: #f54e00;         /* accent: primary buttons, links, active icons */
-  --brand-dark: #b23800;    /* primary button edge (border + hard shadow) */
+  --brand: #be185d;         /* berry accent: primary buttons, links, active icons */
+  --brand-dark: #9d174d;    /* primary button edge (border + hard shadow) */
+  --tint: #fce7f3;          /* selected/active fills: active nav, chips, selected rows */
   --success: #2f9110;
   --success-dark: #1e6309;
   --danger: #b91c1c;

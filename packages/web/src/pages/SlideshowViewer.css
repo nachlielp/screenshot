@@ -1,7 +1,7 @@
 .ssv-page {
   min-height: 100vh;
   background:
-    radial-gradient(circle at top right, rgba(245, 78, 0, 0.24), transparent 28%),
+    radial-gradient(circle at top right, rgba(190, 24, 93, 0.24), transparent 28%),
     linear-gradient(180deg, var(--paper) 0%, var(--paper) 35%, var(--paper-dark) 100%);
   padding: 28px clamp(16px, 3vw, 36px) 36px;
   color: var(--ink);
@@ -52,7 +52,7 @@
 
 .ssv-title-input:focus {
   border-color: var(--brand);
-  box-shadow: 0 0 0 3px rgba(245, 78, 0, 0.16);
+  box-shadow: 0 0 0 3px rgba(190, 24, 93, 0.16);
 }
 
 .ssv-title-edit,
@@ -60,7 +60,7 @@
   border: none;
   border-radius: 999px;
   padding: 8px 12px;
-  background: rgba(245, 78, 0, 0.18);
+  background: rgba(190, 24, 93, 0.18);
   color: var(--brand-dark);
   font-size: 13px;
   font-weight: 700;
@@ -88,7 +88,7 @@
   margin-top: 12px;
   padding: 8px 12px;
   border-radius: 999px;
-  background: rgba(245, 78, 0, 0.18);
+  background: rgba(190, 24, 93, 0.18);
   color: var(--brand-dark);
   font-size: 12px;
   font-weight: 700;
@@ -117,7 +117,7 @@
 }
 
 .ssv-share-btn.copied {
-  background: rgba(245, 78, 0, 0.18);
+  background: rgba(190, 24, 93, 0.18);
   color: var(--brand-dark);
 }
 
@@ -153,7 +153,7 @@
   justify-content: center;
   border-radius: 20px;
   background:
-    linear-gradient(135deg, rgba(245, 78, 0, 0.1), rgba(242, 219, 225, 0.8)),
+    linear-gradient(135deg, rgba(190, 24, 93, 0.1), rgba(242, 219, 225, 0.8)),
     var(--paper);
   overflow: hidden;
 }
@@ -229,7 +229,7 @@
 
 .ssv-thumb-btn.active {
   border-color: var(--brand);
-  box-shadow: 0 0 0 3px rgba(245, 78, 0, 0.18);
+  box-shadow: 0 0 0 3px rgba(190, 24, 93, 0.18);
 }
 
 .ssv-thumb-btn img {

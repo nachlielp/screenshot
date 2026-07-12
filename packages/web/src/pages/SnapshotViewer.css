@@ -89,7 +89,7 @@
 
 .sv-title-input:focus {
   border-color: var(--brand);
-  box-shadow: 0 0 0 3px rgba(245, 78, 0, 0.16);
+  box-shadow: 0 0 0 3px rgba(190, 24, 93, 0.16);
 }
 
 .sv-title-edit,
@@ -199,7 +199,7 @@
 .sv-inline-notice {
   padding: 8px 12px;
   border-radius: 999px;
-  background: rgba(245, 78, 0, 0.18);
+  background: rgba(190, 24, 93, 0.18);
   color: var(--brand-dark);
   font-size: 12px;
   font-weight: 600;
@@ -287,7 +287,7 @@
 
 .sv-content.is-resizing .sv-splitter::before,
 .sv-splitter:hover::before {
-  background: linear-gradient(180deg, rgba(245, 78, 0, 0), rgba(245, 78, 0, 0.9) 12%, rgba(245, 78, 0, 0.9) 88%, rgba(245, 78, 0, 0));
+  background: linear-gradient(180deg, rgba(190, 24, 93, 0), rgba(190, 24, 93, 0.9) 12%, rgba(190, 24, 93, 0.9) 88%, rgba(190, 24, 93, 0));
 }
 
 .sv-image-section {
@@ -439,7 +439,7 @@
   padding: 18px 18px 16px;
   border-bottom: 1.5px solid var(--line);
   background:
-    radial-gradient(circle at top right, rgba(245, 78, 0, 0.18), transparent 34%),
+    radial-gradient(circle at top right, rgba(190, 24, 93, 0.18), transparent 34%),
     linear-gradient(180deg, var(--paper-dark), #fff);
 }
 
@@ -591,7 +591,7 @@
 
 .sv-view-btn:hover:not(.active):not(:disabled) {
   color: var(--ink);
-  background: rgba(245, 78, 0, 0.1);
+  background: rgba(190, 24, 93, 0.1);
 }
 
 .sv-view-btn:disabled {
@@ -1140,7 +1140,7 @@
 }
 
 .sv-network-row.is-active td {
-  background: rgba(245, 78, 0, 0.14);
+  background: rgba(190, 24, 93, 0.14);
 }
 
 .sv-network-type-icon {

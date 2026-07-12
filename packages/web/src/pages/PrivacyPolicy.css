@@ -2,7 +2,7 @@
   min-height: 100vh;
   padding: 40px 20px 72px;
   background:
-    radial-gradient(circle at top left, rgba(245, 78, 0, 0.22), transparent 34%),
+    radial-gradient(circle at top left, rgba(190, 24, 93, 0.22), transparent 34%),
     linear-gradient(180deg, var(--paper) 0%, var(--paper) 38%, var(--paper-dark) 100%);
   color: var(--ink);
 }
@@ -21,7 +21,7 @@
   display: inline-flex;
   padding: 8px 12px;
   border-radius: 999px;
-  background: rgba(245, 78, 0, 0.18);
+  background: rgba(190, 24, 93, 0.18);
   color: var(--brand-dark);
   font-size: 13px;
   font-weight: 700;

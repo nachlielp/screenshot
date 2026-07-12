@@ -85,7 +85,7 @@
 .color-btn.active {
   border-color: var(--brand);
   border-width: 3px;
-  box-shadow: 0 0 0 2px rgba(245, 78, 0, 0.2);
+  box-shadow: 0 0 0 2px rgba(190, 24, 93, 0.2);
 }
 
 .slider-label {
@@ -172,5 +172,5 @@
 }
 
 .text-input-overlay input:focus {
-  box-shadow: 0 0 0 3px rgba(245, 78, 0, 0.2);
+  box-shadow: 0 0 0 3px rgba(190, 24, 93, 0.2);
 }
