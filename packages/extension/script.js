@@ -6,11 +6,10 @@ import {
   syncClerkSession,
 } from './utils/auth.js';
 import { getRuntimeConfig } from './utils/runtime-config.js';
-import { saveCapture } from './utils/db.js';
+import { requestRuntime } from './utils/messaging.js';
 import {
   ensureActiveSlideshowSession,
   getActiveSlideshowSession,
-  appendFrameToSlideshowSession,
   setSlideshowSessionState,
   detachActiveSlideshowSession,
 } from './utils/slideshow.js';
@@ -39,9 +38,6 @@ const slideshowScreenshotBtn = document.getElementById("slideshowScreenshotBtn")
 const slideshowFinishBtn = document.getElementById("slideshowFinishBtn");
 
 const DELAY_MS = 3000;
-const POPUP_HIDE_SETTLE_MS = 75;
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Lightweight error toast so failures are visible instead of dying in the console
 let toastTimer = null;
@@ -63,122 +59,25 @@ const showPopupError = (message) => {
   toastTimer = setTimeout(() => { toast.style.display = 'none'; }, 6000);
 };
 
-const canvasToBlob = (canvas) => (
-  new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        reject(new Error('Failed to create screenshot blob'));
-        return;
-      }
-
-      resolve(blob);
-    }, 'image/png');
-  })
-);
-
-const setButtonBusy = (button, busy) => {
-  if (!button) return;
-  button.disabled = busy;
-};
-
-const setDelayBadge = (button, label) => {
-  const badge = button?.querySelector('.delay-pill');
-  if (badge) {
-    badge.textContent = label;
+const openDesktopCaptureWindow = async ({ mode = 'screenshot', slideshowSessionId = null } = {}) => {
+  const params = new URLSearchParams({ mode });
+  if (slideshowSessionId) {
+    params.set('slideshowSessionId', slideshowSessionId);
   }
-};
 
-const runCountdown = async (button, seconds) => {
-  if (!button) return;
-
-  button.classList.add('counting-down');
-  setButtonBusy(button, true);
-
-  for (let remaining = seconds; remaining >= 1; remaining -= 1) {
-    setDelayBadge(button, `${remaining}s`);
-    await sleep(1000);
-  }
-};
-
-const resetCountdown = (button) => {
-  if (!button) return;
-  button.classList.remove('counting-down');
-  setButtonBusy(button, false);
-  setDelayBadge(button, '3s');
-};
-
-const chooseDesktopMedia = () => (
-  new Promise((resolve, reject) => {
-    chrome.desktopCapture.chooseDesktopMedia(['screen', 'window'], (streamId) => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-        return;
-      }
-
-      if (!streamId) {
-        reject(new Error('Desktop capture was cancelled'));
-        return;
-      }
-
-      resolve(streamId);
-    });
-  })
-);
-
-const hidePopupForCapture = () => {
-  const htmlStyle = document.documentElement.getAttribute('style');
-  const bodyStyle = document.body.getAttribute('style');
-  const childVisibility = Array.from(document.body.children).map((element) => ({
-    element,
-    visibility: element.style.visibility,
-  }));
-
-  document.documentElement.style.setProperty('width', '1px', 'important');
-  document.documentElement.style.setProperty('height', '1px', 'important');
-  document.documentElement.style.setProperty('min-width', '1px', 'important');
-  document.documentElement.style.setProperty('min-height', '1px', 'important');
-  document.documentElement.style.setProperty('overflow', 'hidden', 'important');
-  document.documentElement.style.setProperty('opacity', '0', 'important');
-  document.documentElement.style.setProperty('background', 'transparent', 'important');
-  document.documentElement.style.setProperty('pointer-events', 'none', 'important');
-
-  document.body.style.setProperty('width', '1px', 'important');
-  document.body.style.setProperty('height', '1px', 'important');
-  document.body.style.setProperty('min-width', '1px', 'important');
-  document.body.style.setProperty('min-height', '1px', 'important');
-  document.body.style.setProperty('margin', '0', 'important');
-  document.body.style.setProperty('overflow', 'hidden', 'important');
-  document.body.style.setProperty('opacity', '0', 'important');
-  document.body.style.setProperty('background', 'transparent', 'important');
-  document.body.style.setProperty('pointer-events', 'none', 'important');
-
-  childVisibility.forEach(({ element }) => {
-    element.style.visibility = 'hidden';
+  // Chrome sizes the screen/window picker dialog relative to its parent
+  // window, so the backdrop window has to be large for the picker to be usable.
+  const width = Math.min(1280, screen.availWidth || 1280);
+  const height = Math.min(900, screen.availHeight || 900);
+  await chrome.windows.create({
+    url: chrome.runtime.getURL(`desktop-capture.html?${params.toString()}`),
+    type: 'popup',
+    width,
+    height,
+    left: Math.max(0, Math.round(((screen.availWidth || width) - width) / 2)),
+    top: Math.max(0, Math.round(((screen.availHeight || height) - height) / 2)),
+    focused: true,
   });
-
-  try {
-    window.resizeTo(1, 1);
-  } catch (error) {
-    console.debug('Popup resize is not available:', error);
-  }
-
-  return () => {
-    if (htmlStyle === null) {
-      document.documentElement.removeAttribute('style');
-    } else {
-      document.documentElement.setAttribute('style', htmlStyle);
-    }
-
-    if (bodyStyle === null) {
-      document.body.removeAttribute('style');
-    } else {
-      document.body.setAttribute('style', bodyStyle);
-    }
-
-    childVisibility.forEach(({ element, visibility }) => {
-      element.style.visibility = visibility;
-    });
-  };
 };
 
 function formatFrameCount(count) {
@@ -211,113 +110,26 @@ async function renderPopupMode(session = null) {
   slideshowFinishBtn.disabled = frameCount === 0;
 }
 
-const captureDisplayScreenshot = async ({ slideshowSessionId = null } = {}) => {
-  const streamId = await chooseDesktopMedia();
-  const restorePopup = hidePopupForCapture();
-  await sleep(POPUP_HIDE_SETTLE_MS);
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: false,
-    video: {
-      mandatory: {
-        chromeMediaSource: 'desktop',
-        chromeMediaSourceId: streamId,
-        maxWidth: 3840,
-        maxHeight: 2160,
-        maxFrameRate: 30,
-      },
-    },
-  });
-
-  try {
-    const [videoTrack] = stream.getVideoTracks();
-    if (!videoTrack) {
-      throw new Error('No video track found for display capture');
-    }
-
-    const settings = videoTrack.getSettings ? videoTrack.getSettings() : {};
-    const video = document.createElement('video');
-    video.muted = true;
-    video.playsInline = true;
-    video.srcObject = stream;
-
-    await new Promise((resolve) => {
-      video.onloadedmetadata = () => resolve();
-    });
-    await video.play();
-
-    if (typeof video.requestVideoFrameCallback === 'function') {
-      await new Promise((resolve) => video.requestVideoFrameCallback(() => resolve()));
-    } else {
-      await sleep(150);
-    }
-
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-
-    const context = canvas.getContext('2d');
-    if (!context) {
-      throw new Error('Could not create canvas context');
-    }
-
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    const blob = await canvasToBlob(canvas);
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-    const captureId = crypto.randomUUID();
-    const displaySurface = settings.displaySurface || 'display';
-    const filename = `${displaySurface}-screenshot-${timestamp}.png`;
-    const deviceMeta = {
-      captureSurface: 'display',
-      displaySurface,
-      screenWidth: canvas.width,
-      screenHeight: canvas.height,
-      timestamp: new Date().toISOString(),
-    };
-
-    await saveCapture(captureId, blob, filename, 'image/png', null, null, null, deviceMeta);
-
-    if (slideshowSessionId) {
-      await appendFrameToSlideshowSession(slideshowSessionId, {
-        captureId,
-        source: displaySurface === 'window' ? 'window' : 'screen',
-        filename,
-        mimeType: 'image/png',
-        width: canvas.width,
-        height: canvas.height,
-        captureTimestamp: deviceMeta.timestamp,
-        deviceMeta,
-      });
-      return;
-    }
-
-    const editorUrl = chrome.runtime.getURL(`editor.html?id=${captureId}`);
-    await chrome.tabs.create({ url: editorUrl });
-  } catch (error) {
-    restorePopup();
-    throw error;
-  } finally {
-    stream.getTracks().forEach((track) => track.stop());
-  }
-};
-
-const takeTabScreenshot = async ({ includeLogs, fullPage, delayMs = 0, slideshowSessionId = null }) => {
-  if (delayMs > 0) {
-    await sleep(delayMs);
-  }
-
-  const response = await chrome.runtime.sendMessage({
-    type: "take-screenshot",
-    target: "service-worker",
-    captureTarget: "tab",
+const takeTabScreenshot = async ({ includeLogs, fullPage, slideshowSessionId = null }) => {
+  await requestRuntime({
+    type: 'take-screenshot',
+    target: 'service-worker',
+    captureTarget: 'tab',
     includeLogs,
     fullPage,
     slideshowSessionId,
-  });
+  }, { timeoutMs: fullPage ? 120000 : 30000 });
+};
 
-  if (response && response.success === false) {
-    throw new Error(response.error || 'Screenshot failed');
-  }
+const scheduleTabScreenshot = async ({ includeLogs, delayMs }) => {
+  await requestRuntime({
+    type: 'schedule-screenshot',
+    target: 'service-worker',
+    captureTarget: 'tab',
+    includeLogs,
+    fullPage: false,
+    delayMs,
+  });
 };
 
 const openAnnotateImport = async () => {
@@ -398,7 +210,7 @@ const initializePopup = async () => {
     slideshowScreenshotBtn?.addEventListener("click", async () => {
       try {
         const session = await ensureActiveSlideshowSession();
-        await captureDisplayScreenshot({ slideshowSessionId: session.id });
+        await openDesktopCaptureWindow({ slideshowSessionId: session.id });
         window.close();
       } catch (error) {
         console.error("Slideshow screenshot capture failed:", error);
@@ -440,21 +252,17 @@ const initializePopup = async () => {
       }
     });
 
-    delayedTabBtn?.addEventListener("click", async () => {
-      try {
-        await runCountdown(delayedTabBtn, DELAY_MS / 1000);
-        await takeTabScreenshot({ includeLogs: true, fullPage: false });
-        window.close();
-      } catch (error) {
+    delayedTabBtn?.addEventListener("click", () => {
+      delayedTabBtn.disabled = true;
+      scheduleTabScreenshot({ includeLogs: true, delayMs: DELAY_MS }).catch((error) => {
         console.error("Delayed tab capture failed:", error);
-        showPopupError(`Delayed capture failed: ${error.message}`);
-        resetCountdown(delayedTabBtn);
-      }
+      });
+      window.close();
     });
 
     screenWindowBtn?.addEventListener("click", async () => {
       try {
-        await captureDisplayScreenshot();
+        await openDesktopCaptureWindow();
         window.close();
       } catch (error) {
         console.error("Display capture failed:", error);
@@ -475,13 +283,7 @@ const initializePopup = async () => {
 
     recordScreenBtn?.addEventListener("click", async () => {
       try {
-        // Pick the screen/window here — the offscreen document records it
-        const streamId = await chooseDesktopMedia();
-        await sendRecordingCommand({
-          type: "start-recording",
-          recordingType: "screen",
-          streamId,
-        });
+        await openDesktopCaptureWindow({ mode: 'recording' });
         window.close();
       } catch (error) {
         console.error("Screen recording failed to start:", error);

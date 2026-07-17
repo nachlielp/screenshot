@@ -52,6 +52,17 @@ async function init() {
     });
     engine.setTool('select');
 
+    // "Upload with logs & network" only makes sense for tab screenshots — the
+    // console/network logs are collected from an inspectable browser tab. Full
+    // window (desktop) captures and imported images (drag-drop / clipboard /
+    // local files) tag deviceMeta.captureSurface, so hide the button for those.
+    const NON_TAB_SURFACES = ['display', 'local-image', 'clipboard-image'];
+    const isTabScreenshot = !NON_TAB_SURFACES.includes(capture.deviceMeta?.captureSurface);
+    if (!isTabScreenshot) {
+      const uploadWithLogsBtn = document.getElementById('upload-with-logs-btn');
+      if (uploadWithLogsBtn) uploadWithLogsBtn.style.display = 'none';
+    }
+
     document.getElementById('loading').style.display = 'none';
     document.getElementById('toolbar-header').style.display = 'flex';
   } catch (error) {

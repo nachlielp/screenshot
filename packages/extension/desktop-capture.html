@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Choose what to capture</title>
+    <style>
+        :root {
+            color-scheme: light;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            color: #1f2937;
+            background: #fff7f8;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            padding: 24px;
+        }
+
+        main {
+            width: 100%;
+            max-width: 440px;
+            padding: 22px;
+            border: 1.5px solid #f1b8c0;
+            border-radius: 14px;
+            background: #ffffff;
+            box-shadow: 0 10px 30px rgba(127, 29, 29, 0.12);
+        }
+
+        h1 {
+            margin: 0 0 8px;
+            font-size: 20px;
+            line-height: 1.2;
+        }
+
+        #status {
+            min-height: 44px;
+            margin: 0 0 18px;
+            color: #6b7280;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        #status[data-state="error"] { color: #b91c1c; }
+        #status[data-state="success"] { color: #166534; }
+
+        .actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            min-height: 42px;
+            padding: 0 16px;
+            border-radius: 8px;
+            border: 1.5px solid #9f1239;
+            font: 700 14px/1 inherit;
+            cursor: pointer;
+        }
+
+        #chooseBtn {
+            flex: 1;
+            color: #ffffff;
+            background: #e11d48;
+            box-shadow: 0 3px 0 #9f1239;
+        }
+
+        #chooseBtn:active:not(:disabled) {
+            transform: translateY(3px);
+            box-shadow: none;
+        }
+
+        #chooseBtn:disabled {
+            cursor: wait;
+            opacity: 0.55;
+        }
+
+        #cancelBtn {
+            color: #374151;
+            background: #ffffff;
+            border-color: #d1d5db;
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <h1 id="title">Choose a screen or window</h1>
+        <p id="status" role="status" aria-live="polite">Opening the screen picker…</p>
+        <div class="actions">
+            <button id="chooseBtn" type="button" hidden>Try again</button>
+            <button id="cancelBtn" type="button">Cancel</button>
+        </div>
+    </main>
+    <script type="module" src="desktop-capture.js"></script>
+</body>
+</html>

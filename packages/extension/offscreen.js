@@ -1,4 +1,14 @@
-import { saveCapture } from './utils/db.js';
+import {
+    getCaptureStream,
+    getMicrophoneStream,
+    combineMediaStreams,
+    saveRecording,
+} from './utils/media-capture.js';
+
+// The offscreen document only handles tab recordings. Desktop (screen/window)
+// capture runs in the desktop-capture window instead, because streamIds from
+// desktopCapture.chooseDesktopMedia can only be consumed by the page that
+// requested them — consuming one here fails with "Error starting tab capture".
 
 // Listen for messages from the service worker
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -11,6 +21,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     switch (message.type) {
+        case "offscreen-ping":
+            sendResponse({ success: true });
+            return false;
         case "start-recording":
             startRecording(message.data, message.source || "tab")
                 .then(() => sendResponse({ success: true }))
@@ -20,16 +33,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             stopRecording()
                 .then(() => sendResponse({ success: true }))
                 .catch((error) => sendResponse({ success: false, error: error.message }));
-            return true;
-        case "capture-desktop-screenshot":
-            captureDesktopScreenshot(message.streamId, message.captureTarget)
-                .then((result) => sendResponse(result))
-                .catch((error) => {
-                    sendResponse({
-                        success: false,
-                        error: error.message,
-                    });
-                });
             return true;
         default:
             console.warn("Unknown request type:", message.type);
@@ -136,81 +139,6 @@ async function startRecording (streamId, source = "tab") {
 }
 
 /**
- * Gets the video (+ audio where available) stream for a tab or desktop capture.
- * @param {string} streamId
- * @param {"tab"|"desktop"} source
- * @returns {Promise<MediaStream>}
- */
-async function getCaptureStream (streamId, source) {
-    const isDesktop = source === "desktop";
-    const constraints = {
-        audio: {
-            mandatory: {
-                chromeMediaSource: source,
-                chromeMediaSourceId: streamId,
-            },
-        },
-        video: {
-            mandatory: {
-                chromeMediaSource: source,
-                chromeMediaSourceId: streamId,
-                maxWidth: isDesktop ? 3840 : 1920,
-                maxHeight: isDesktop ? 2160 : 1080,
-                maxFrameRate: 30,
-            },
-        },
-    };
-
-    try {
-        return await navigator.mediaDevices.getUserMedia(constraints);
-    } catch (error) {
-        // Some desktop surfaces refuse audio capture — retry video-only
-        console.warn("[offscreen] Capture with audio failed, retrying video-only:", error.message);
-        return navigator.mediaDevices.getUserMedia({ ...constraints, audio: false });
-    }
-}
-
-/**
- * Gets the media stream for the microphone.
- * @returns {Promise<MediaStream>} - The media stream for the microphone.
- */
-
-async function getMicrophoneStream () {
-    return navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: false },
-    });
-}
-
-/**
- * Mixes whatever audio sources are available (capture audio, microphone)
- * into a single stream alongside the capture's video track.
- * @returns {{combinedStream: MediaStream, audioContext: AudioContext | null}}
- */
-function combineMediaStreams (captureStream, micStream) {
-    const videoTrack = captureStream.getVideoTracks()[0];
-    const audioSources = [captureStream, micStream].filter(
-        (stream) => stream && stream.getAudioTracks().length > 0
-    );
-
-    if (audioSources.length === 0) {
-        return { combinedStream: new MediaStream([videoTrack]), audioContext: null };
-    }
-
-    const audioContext = new AudioContext();
-    const audioDestination = audioContext.createMediaStreamDestination();
-    for (const stream of audioSources) {
-        audioContext.createMediaStreamSource(stream).connect(audioDestination);
-    }
-
-    const combinedStream = new MediaStream([
-        videoTrack,
-        audioDestination.stream.getTracks()[0],
-    ]);
-
-    return { combinedStream, audioContext };
-}
-
-/**
  * Handles the `ondataavailable` event for the MediaRecorder.
  * @param {BlobEvent} event - The event containing the recorded data.
  */
@@ -221,102 +149,8 @@ function handleDataAvailable (event) {
 /**
  * Handles the `onstop` event for the MediaRecorder.
  */
-
 async function handleRecordingStop () {
     mediaRecorder = null;
-    const recordedBlob = new Blob(recordedChunks, { type: "video/webm" });
-
-    // Generate filename with timestamp; the "screen-"/"tab-" prefix is what
-    // classifies the capture type at upload time.
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-    const filename = `${recordingSource === "desktop" ? "screen" : "tab"}-recording-${timestamp}.webm`;
-    
-    // Save to IndexedDB with unique ID
-    const captureId = crypto.randomUUID();
-    await saveCapture(captureId, recordedBlob, filename, 'video/webm');
-    
-    // Message service worker to open preview tab
-    chrome.runtime.sendMessage({
-        type: 'open-preview',
-        id: captureId,
-        captureType: 'video'
-    });
-    
+    await saveRecording(recordedChunks, recordingSource);
     recordedChunks = [];
-}
-
-/**
- * Captures a still image from a desktop or window stream.
- * @param {string} streamId
- * @param {"screen"|"window"} captureTarget
- * @returns {Promise<{ success: boolean, dataUrl: string, deviceMeta: object }>}
- */
-async function captureDesktopScreenshot (streamId, captureTarget) {
-    const stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: {
-            mandatory: {
-                chromeMediaSource: "desktop",
-                chromeMediaSourceId: streamId,
-                maxWidth: 7680,
-                maxHeight: 4320,
-            },
-        },
-    });
-
-    try {
-        const video = document.createElement("video");
-        video.muted = true;
-        video.playsInline = true;
-        video.srcObject = stream;
-        await new Promise((resolve) => {
-            video.onloadedmetadata = () => resolve();
-        });
-        await video.play();
-
-        if (typeof video.requestVideoFrameCallback === "function") {
-            await new Promise((resolve) => video.requestVideoFrameCallback(() => resolve()));
-        } else {
-            await new Promise((resolve) => setTimeout(resolve, 150));
-        }
-
-        const canvas = new OffscreenCanvas(video.videoWidth, video.videoHeight);
-        const context = canvas.getContext("2d");
-
-        if (!context) {
-            throw new Error("Could not create canvas context");
-        }
-
-        context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
-
-        const blob = await canvas.convertToBlob({ type: "image/png" });
-        const dataUrl = await blobToDataUrl(blob);
-
-        return {
-            success: true,
-            dataUrl,
-            deviceMeta: {
-                captureSurface: captureTarget,
-                screenWidth: video.videoWidth,
-                screenHeight: video.videoHeight,
-                timestamp: new Date().toISOString(),
-            },
-        };
-    } finally {
-        stream.getTracks().forEach((track) => track.stop());
-    }
-}
-
-/**
- * Converts a blob into a data URL.
- * @param {Blob} blob
- * @returns {Promise<string>}
- */
-function blobToDataUrl (blob) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onerror = () => reject(reader.error);
-        reader.onloadend = () => resolve(reader.result);
-        reader.readAsDataURL(blob);
-    });
 }

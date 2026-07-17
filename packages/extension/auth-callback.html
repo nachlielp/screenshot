@@ -1,41 +1,71 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Signing in...</title>
+    <title>Signing in…</title>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,400..900;1,400..900&display=swap');
+
+        :root {
+            --paper: #faedf0;
+            --paper-dark: #f2dbe1;
+            --ink: #151515;
+            --muted: #6f5b61;
+            --line: #e4c8cf;
+            --brand: #be185d;
+            --font-sans: "Archivo", ui-sans-serif, system-ui, -apple-system,
+                BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+
+        * { box-sizing: border-box; }
+
         body {
-            font-family: system-ui, -apple-system, sans-serif;
+            font-family: var(--font-sans);
             display: flex;
             align-items: center;
             justify-content: center;
-            height: 100vh;
+            min-height: 100vh;
             margin: 0;
-            background: linear-gradient(to bottom, #1e1e2e, #3a3a52);
-            color: white;
+            padding: 20px;
+            background: var(--paper);
+            color: var(--ink);
         }
+
         .container {
             text-align: center;
+            background: #fff;
+            border: 1.5px solid var(--line);
+            border-radius: 10px;
+            box-shadow: 0 2px 0 rgba(0, 0, 0, 0.06);
+            padding: 32px 40px;
         }
+
         .spinner {
-            border: 3px solid rgba(255, 255, 255, 0.3);
-            border-top: 3px solid white;
+            border: 3px solid var(--paper-dark);
+            border-top: 3px solid var(--brand);
             border-radius: 50%;
             width: 40px;
             height: 40px;
-            animation: spin 1s linear infinite;
+            animation: spin 0.9s linear infinite;
             margin: 0 auto 20px;
         }
+
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
+        }
+
+        .container p {
+            margin: 0;
+            color: var(--muted);
+            font-weight: 600;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="spinner"></div>
-        <p>Completing sign in...</p>
+        <p>Completing sign in…</p>
     </div>
     <script type="module" src="auth-callback.js"></script>
 </body>

@@ -1,3 +1,7 @@
+(() => {
+if (globalThis.__screenshotContentInitialized) return;
+globalThis.__screenshotContentInitialized = true;
+
 // ── Inject page-interceptors.js into the page's MAIN world ─────────────────
 // Uses an external script (bypasses CSP restrictions that block inline scripts)
 (function injectInterceptors() {
@@ -131,7 +135,153 @@ const createDraggableIframe = (id, src, styles) => {
 
 
 // Listen for messages from service worker
+let fullPageCaptureInProgress = false;
+let activeDelayedCountdown = null;
+
+const waitForNextPaint = () => (
+    new Promise((resolve) => {
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                setTimeout(resolve, 80);
+            });
+        });
+    })
+);
+
+const sendDelayedCaptureMessage = (message) => {
+    try {
+        const request = chrome.runtime.sendMessage({
+            ...message,
+            target: 'service-worker',
+        });
+        request?.catch?.((error) => {
+            console.warn('[content.js] Delayed capture message failed:', error.message);
+        });
+    } catch (error) {
+        console.warn('[content.js] Delayed capture message could not be sent:', error.message);
+    }
+};
+
+const clearDelayedCaptureCountdown = (jobId = null) => {
+    const countdown = activeDelayedCountdown;
+    if (!countdown || (jobId && countdown.jobId !== jobId)) {
+        return;
+    }
+
+    countdown.cancelled = true;
+    countdown.timers.forEach((timerId) => clearTimeout(timerId));
+    countdown.host.remove();
+    activeDelayedCountdown = null;
+};
+
+const startDelayedCaptureCountdown = ({ jobId, durationMs }) => {
+    if (!jobId) {
+        throw new Error('Delayed capture countdown is missing a job id');
+    }
+
+    clearDelayedCaptureCountdown();
+
+    const totalSeconds = Math.max(1, Math.ceil((Number(durationMs) || 3000) / 1000));
+    const host = document.createElement('div');
+    host.id = `__screenshot_delayed_capture_${jobId}`;
+    host.style.cssText = [
+        'all:initial',
+        'position:fixed',
+        'top:24px',
+        'right:24px',
+        'z-index:2147483647',
+        'pointer-events:none',
+    ].join(';');
+    host.setAttribute('aria-hidden', 'true');
+
+    const shadow = host.attachShadow({ mode: 'closed' });
+    const badge = document.createElement('div');
+    badge.style.cssText = [
+        'display:flex',
+        'align-items:center',
+        'justify-content:center',
+        'width:72px',
+        'height:72px',
+        'border-radius:999px',
+        'background:rgba(17,24,39,0.94)',
+        'border:3px solid rgba(255,255,255,0.96)',
+        'box-shadow:0 12px 30px rgba(0,0,0,0.35)',
+        'color:#ffffff',
+        'font:700 38px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
+        'font-variant-numeric:tabular-nums',
+    ].join(';');
+    badge.textContent = String(totalSeconds);
+    shadow.appendChild(badge);
+    (document.documentElement || document.body).appendChild(host);
+
+    const countdown = {
+        jobId,
+        host,
+        badge,
+        timers: [],
+        cancelled: false,
+    };
+    activeDelayedCountdown = countdown;
+
+    const showRemaining = (remaining) => {
+        if (countdown.cancelled || activeDelayedCountdown !== countdown) {
+            return;
+        }
+        badge.textContent = String(remaining);
+        sendDelayedCaptureMessage({
+            type: 'delayed-capture-countdown-tick',
+            jobId,
+            remaining,
+        });
+    };
+
+    showRemaining(totalSeconds);
+    for (let elapsed = 1; elapsed < totalSeconds; elapsed += 1) {
+        countdown.timers.push(setTimeout(() => {
+            showRemaining(totalSeconds - elapsed);
+        }, elapsed * 1000));
+    }
+
+    countdown.timers.push(setTimeout(async () => {
+        if (countdown.cancelled || activeDelayedCountdown !== countdown) {
+            return;
+        }
+
+        countdown.host.remove();
+        activeDelayedCountdown = null;
+        await waitForNextPaint();
+
+        if (!countdown.cancelled) {
+            sendDelayedCaptureMessage({
+                type: 'delayed-capture-countdown-complete',
+                jobId,
+            });
+        }
+    }, totalSeconds * 1000));
+};
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.type === 'screenshot-content-ping') {
+        sendResponse({ success: true });
+        return false;
+    }
+
+    if (request.type === 'delayed-capture-countdown-start') {
+        try {
+            startDelayedCaptureCountdown(request);
+            sendResponse({ success: true, visible: true });
+        } catch (error) {
+            sendResponse({ success: false, error: error.message });
+        }
+        return false;
+    }
+
+    if (request.type === 'delayed-capture-countdown-cancel') {
+        clearDelayedCaptureCountdown(request.jobId || null);
+        sendResponse({ success: true });
+        return false;
+    }
+
     if (request.type === 'extract-console-network') {
         // Ask the main-world interceptor for buffered logs
         console.log('[content.js] Requesting console/network logs from page interceptor');
@@ -165,19 +315,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.type === 'capture-full-page') {
-        // Capture full page screenshot by scrolling and stitching
+        if (fullPageCaptureInProgress) {
+            sendResponse({ success: false, dataUrl: null, error: 'A Full Page capture is already in progress' });
+            return false;
+        }
+
         console.log('[content.js] Starting full page screenshot capture');
-        
+        fullPageCaptureInProgress = true;
+
         (async () => {
             try {
                 const dataUrl = await captureFullPageScreenshot();
-                sendResponse({ dataUrl });
+                sendResponse({ success: true, dataUrl });
             } catch (error) {
                 console.error('[content.js] Full page capture error:', error);
-                sendResponse({ dataUrl: null, error: error.message });
+                sendResponse({ success: false, dataUrl: null, error: error.message });
+            } finally {
+                fullPageCaptureInProgress = false;
             }
         })();
-        
+
         return true; // async
     }
 });
@@ -266,6 +423,9 @@ async function captureFullPageScreenshot() {
     canvas.width = pageWidth;
     canvas.height = pageHeight;
     const ctx = canvas.getContext('2d');
+    if (!ctx) {
+        throw new Error('Could not create the Full Page canvas');
+    }
 
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, pageWidth, pageHeight);
@@ -285,30 +445,27 @@ async function captureFullPageScreenshot() {
 
             console.log(`[content.js] Capture ${captureCount + 1}/${totalCaptures}  target(${targetX},${targetY})  actual(${actualX},${actualY})`);
 
-            try {
-                const response = await chrome.runtime.sendMessage({
-                    type: 'capture-viewport-part'
-                });
+            const response = await chrome.runtime.sendMessage({
+                type: 'capture-viewport-part',
+                target: 'service-worker',
+            });
 
-                if (response && response.dataUrl) {
-                    const img = new Image();
-                    await new Promise((resolve, reject) => {
-                        img.onload = resolve;
-                        img.onerror = reject;
-                        img.src = response.dataUrl;
-                    });
-
-                    // captureVisibleTab returns an image at DPR resolution
-                    // (e.g. 2x on Retina). Draw it scaled down to CSS-pixel
-                    // viewport size, positioned at the actual scroll offset.
-                    ctx.drawImage(img, actualX, actualY, viewportWidth, viewportHeight);
-                    captureCount++;
-                } else {
-                    console.error(`[content.js] No dataUrl for section ${captureCount + 1}`);
-                }
-            } catch (error) {
-                console.error(`[content.js] Error capturing section ${captureCount + 1}:`, error);
+            if (!response?.success || !response.dataUrl) {
+                throw new Error(response?.error || `No image returned for section ${captureCount + 1}`);
             }
+
+            const img = new Image();
+            await new Promise((resolve, reject) => {
+                img.onload = resolve;
+                img.onerror = () => reject(new Error(`Could not decode section ${captureCount + 1}`));
+                img.src = response.dataUrl;
+            });
+
+            // captureVisibleTab returns an image at DPR resolution
+            // (e.g. 2x on Retina). Draw it scaled down to CSS-pixel
+            // viewport size, positioned at the actual scroll offset.
+            ctx.drawImage(img, actualX, actualY, viewportWidth, viewportHeight);
+            captureCount++;
         }
     }
     } finally {
@@ -317,6 +474,15 @@ async function captureFullPageScreenshot() {
     }
 
     console.log(`[content.js] Full page capture complete. ${captureCount}/${totalCaptures} sections captured`);
+    if (captureCount !== totalCaptures) {
+        throw new Error(`Full Page capture was incomplete (${captureCount}/${totalCaptures} sections)`);
+    }
 
-    return canvas.toDataURL('image/png');
+    const dataUrl = canvas.toDataURL('image/png');
+    if (!dataUrl || dataUrl === 'data:,') {
+        throw new Error('Full Page canvas could not be exported');
+    }
+
+    return dataUrl;
 }
+})();

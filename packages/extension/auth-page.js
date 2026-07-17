@@ -62,7 +62,7 @@ async function initClerk() {
             border: '1px solid #dadce0',
             borderRadius: '8px',
             cursor: 'pointer',
-            marginTop: '40px',
+            marginTop: '0',
             fontFamily: 'system-ui, -apple-system, sans-serif'
         });
         btn.onmouseenter = () => { btn.style.background = '#f7f8f8'; };
@@ -95,17 +95,21 @@ async function initClerk() {
     } catch (error) {
         console.error('Error initializing Clerk:', error);
         document.getElementById('clerk-container').innerHTML = `
-            <div style="text-align: center; padding: 40px; color: #ef4444;">
-                <h3>Error loading authentication</h3>
-                <p>${error.message}</p>
+            <div style="text-align: center; padding: 24px; font-family: var(--font-sans);">
+                <h3 style="color: #b91c1c; font-weight: 800; letter-spacing: -0.02em; margin: 0 0 8px;">Error loading authentication</h3>
+                <p style="color: #6f5b61; font-weight: 600; margin: 0 0 20px;">${error.message}</p>
                 <button onclick="location.reload()" style="
-                    background: #3b82f6;
-                    border: none;
-                    padding: 10px 20px;
+                    height: 34px;
+                    padding: 0 0.9rem;
+                    background: #be185d;
+                    color: #fff;
+                    border: 1.5px solid #9d174d;
                     border-radius: 6px;
-                    color: white;
+                    box-shadow: 0 2px 0 #9d174d;
+                    font-family: inherit;
+                    font-size: 13px;
+                    font-weight: 700;
                     cursor: pointer;
-                    margin-top: 20px;
                 ">Try Again</button>
             </div>
         `;
