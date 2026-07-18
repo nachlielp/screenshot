@@ -40,6 +40,13 @@ interface ImageEditorProps {
   saveRequestToken?: number;
 }
 
+// Nudge a new text annotation's anchor down one screen pixel: canvas text
+// (textBaseline 'top') renders a hair higher than the same text in the
+// overlay input's line box. Matches the extension editors.
+function nudgeTextAnchor(engine: AnnotationEngine, point: { x: number; y: number }) {
+  return { x: point.x, y: point.y + 1 / engine.displayScale };
+}
+
 const TOOLS: { key: string; title: string }[] = [
   { key: 'select', title: 'Select / Move (V)' },
   { key: 'rect', title: 'Rectangle (R)' },
@@ -93,6 +100,7 @@ function ToolIcon({ name }: { name: string }) {
 }
 
 const COLORS = [
+  { value: '#000000', label: 'Black' },
   { value: '#ef4444', label: 'Red' },
   { value: '#f59e0b', label: 'Orange' },
   { value: '#eab308', label: 'Yellow' },
@@ -118,14 +126,20 @@ export function ImageEditor({
   const initialAnnotationsRef = useRef(initialAnnotations);
 
   const [activeTool, setActiveTool] = useState('select');
-  const [currentColor, setCurrentColor] = useState('#ef4444');
+  const [currentColor, setCurrentColor] = useState('#000000');
   const [currentThickness, setCurrentThickness] = useState(4);
-  const [currentFontSize, setCurrentFontSize] = useState(20);
+  const [currentFontSize, setCurrentFontSize] = useState(84);
   const [historyState, setHistoryState] = useState({ canUndo: false, canRedo: false });
   const [hasSelection, setHasSelection] = useState(false);
   const [textEdit, setTextEdit] = useState<
     (TextEditRequest & { value: string }) | null
   >(null);
+  // Mirror of textEdit read synchronously from engine callbacks / blur. React
+  // state updates lag a render, and a click-out fires the engine pointerdown
+  // before the input's blur — without a synchronous source of truth the typed
+  // text gets cleared before it's committed (it "disappears"), or committed
+  // twice. This ref is the authority for committing.
+  const textEditRef = useRef<(TextEditRequest & { value: string }) | null>(null);
 
   // Create the engine and load the image
   useEffect(() => {
@@ -151,15 +165,30 @@ export function ImageEditor({
         }
       },
       onTextEditRequest: (request) => {
-        setTextEdit({ ...request, value: request.annotation?.text ?? '' });
+        // A text box is already open — this request is the click meant to
+        // dismiss it (the text tool is still active). Commit what's typed and
+        // return to select instead of opening a second box, so the placed text
+        // stays put and is grabbable, matching how finishing a shape behaves.
+        const pending = textEditRef.current;
+        if (pending) {
+          if (pending.annotation) engine.updateText(pending.annotation.id, pending.value);
+          else engine.insertText(nudgeTextAnchor(engine, pending.imagePoint), pending.value);
+          textEditRef.current = null;
+          setTextEdit(null);
+          engine.setTool('select');
+          return;
+        }
+        const next = { ...request, value: request.annotation?.text ?? '' };
+        textEditRef.current = next;
+        setTextEdit(next);
         setTimeout(() => textInputRef.current?.focus(), 0);
       },
     });
 
     engineRef.current = engine;
-    engine.color = '#ef4444';
+    engine.color = '#000000';
     engine.thickness = 4;
-    engine.fontSize = 20;
+    engine.fontSize = 84;
 
     let cancelled = false;
     void engine
@@ -200,15 +229,26 @@ export function ImageEditor({
 
   const commitTextEdit = useCallback(() => {
     const engine = engineRef.current;
-    if (!engine || !textEdit) return;
+    const pending = textEditRef.current;
+    // The ref guards against a double commit: a click-out already commits via
+    // onTextEditRequest, then the input's blur fires this too.
+    if (!engine || !pending) return;
+    textEditRef.current = null;
 
-    if (textEdit.annotation) {
-      engine.updateText(textEdit.annotation.id, textEdit.value);
+    if (pending.annotation) {
+      engine.updateText(pending.annotation.id, pending.value);
     } else {
-      engine.insertText(textEdit.imagePoint, textEdit.value);
+      engine.insertText(nudgeTextAnchor(engine, pending.imagePoint), pending.value);
     }
     setTextEdit(null);
-  }, [textEdit]);
+    // Land on select with the new text selected, so it's immediately grabbable.
+    engine.setTool('select');
+  }, []);
+
+  const cancelTextEdit = useCallback(() => {
+    textEditRef.current = null;
+    setTextEdit(null);
+  }, []);
 
   const copyToClipboard = useCallback(async () => {
     const engine = engineRef.current;
@@ -274,7 +314,7 @@ export function ImageEditor({
           commitTextEdit();
         } else if (e.key === 'Escape') {
           e.preventDefault();
-          setTextEdit(null);
+          cancelTextEdit();
         }
         return;
       }
@@ -310,7 +350,7 @@ export function ImageEditor({
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [textEdit, commitTextEdit, copyToClipboard, enableCrop]);
+  }, [textEdit, commitTextEdit, cancelTextEdit, copyToClipboard, enableCrop]);
 
   return (
     <div className="image-editor">
@@ -355,30 +395,41 @@ export function ImageEditor({
               title={color.label}
             />
           ))}
+          <input
+            type="color"
+            className="color-picker-native"
+            value={currentColor}
+            onChange={(e) => handleColorChange(e.target.value)}
+            title="Pick a custom color"
+          />
         </div>
 
         <div className="tool-group">
           <label className="slider-label">
-            Thickness:
-            <input
-              type="range"
-              min="1"
-              max="12"
-              value={currentThickness}
-              onChange={(e) => handleThicknessChange(parseInt(e.target.value))}
-            />
-            <span>{currentThickness}px</span>
+            <span className="slider-title">Line width</span>
+            <span className="slider-row">
+              <input
+                type="range"
+                min="1"
+                max="12"
+                value={currentThickness}
+                onChange={(e) => handleThicknessChange(parseInt(e.target.value))}
+              />
+              <span className="slider-value">{currentThickness}px</span>
+            </span>
           </label>
           <label className="slider-label">
-            Font Size:
-            <input
-              type="range"
-              min="12"
-              max="48"
-              value={currentFontSize}
-              onChange={(e) => handleFontSizeChange(parseInt(e.target.value))}
-            />
-            <span>{currentFontSize}px</span>
+            <span className="slider-title">Text size</span>
+            <span className="slider-row">
+              <input
+                type="range"
+                min="7"
+                max="84"
+                value={currentFontSize}
+                onChange={(e) => handleFontSizeChange(parseInt(e.target.value))}
+              />
+              <span className="slider-value">{currentFontSize}px</span>
+            </span>
           </label>
         </div>
 
@@ -422,21 +473,33 @@ export function ImageEditor({
         {textEdit && (
           <div
             className="text-input-overlay"
-            style={{ left: textEdit.clientX, top: textEdit.clientY }}
+            // The engine anchors committed text with its top-left at the click
+            // point, but typed characters sit inset by the input's border +
+            // padding (see .text-input-overlay input in ImageEditor.css). Pull
+            // the overlay up-left by that inset so text doesn't jump on commit.
+            style={{ left: textEdit.clientX - 10, top: textEdit.clientY - 6 }}
             onClick={(e) => e.stopPropagation()}
           >
             <input
               ref={textInputRef}
               type="text"
               value={textEdit.value}
-              onChange={(e) =>
-                setTextEdit((current) =>
-                  current ? { ...current, value: e.target.value } : current
-                )
-              }
+              onChange={(e) => {
+                const value = e.target.value;
+                if (textEditRef.current) {
+                  textEditRef.current = { ...textEditRef.current, value };
+                }
+                setTextEdit((current) => (current ? { ...current, value } : current));
+              }}
               onBlur={commitTextEdit}
               placeholder="Enter text..."
-              style={{ fontSize: currentFontSize, color: currentColor }}
+              // Match the drawn text's on-screen size: the canvas is displayed
+              // scaled down, so multiply the image-pixel font size by the same
+              // scale, otherwise the input looks larger than the result.
+              style={{
+                fontSize: currentFontSize * (engineRef.current?.displayScale ?? 1),
+                color: currentColor,
+              }}
             />
           </div>
         )}

@@ -58,6 +58,13 @@ function handleSelectionChange(annotation) {
       thicknessSlider.value = String(annotation.thickness);
       document.getElementById('thickness-value').textContent = `${annotation.thickness}px`;
     }
+    const fontSizeSlider = document.getElementById('font-size-slider');
+    if (fontSizeSlider && annotation.fontSize) {
+      fontSizeSlider.value = String(annotation.fontSize);
+      document.getElementById('font-size-value').textContent = `${annotation.fontSize}px`;
+    }
+    const nativePicker = document.getElementById('color-picker-native');
+    if (nativePicker) nativePicker.value = annotation.color;
   }
 }
 
@@ -74,11 +81,37 @@ function handleTextEditRequest(request) {
   const overlay = document.getElementById('text-input-overlay');
   const input = document.getElementById('text-input');
 
+  // If a text box is already open, this request came from a click meant to
+  // dismiss it (the text tool is still active). Commit what's been typed and
+  // return to the select tool instead of opening a second box — this mirrors
+  // finishing a shape, and keeps the just-placed text from being discarded.
+  if (isTextInputActive()) {
+    finalizeText(input.value);
+    return;
+  }
+
   activeTextRequest = { ...request, finalized: false };
 
-  overlay.style.left = `${request.clientX}px`;
-  overlay.style.top = `${request.clientY}px`;
   overlay.style.display = 'block';
+
+  // Match the input to the drawn text: same colour, and the same on-screen size
+  // (the canvas is displayed scaled down, so the raw font size in image pixels
+  // must be multiplied by the display scale to look identical).
+  const fontSize = request.annotation?.fontSize ?? engine.fontSize;
+  input.style.fontSize = `${fontSize * engine.displayScale}px`;
+  input.style.color = request.annotation?.color ?? engine.color;
+
+  // The engine anchors committed text with its top-left at the click point, but
+  // the characters typed in the input sit inset by the input's border + padding.
+  // Pull the overlay up-left by that inset so the typed text lies exactly on the
+  // anchor and doesn't jump when committed.
+  const inputStyle = getComputedStyle(input);
+  const insetX =
+    parseFloat(inputStyle.borderLeftWidth) + parseFloat(inputStyle.paddingLeft);
+  const insetY =
+    parseFloat(inputStyle.borderTopWidth) + parseFloat(inputStyle.paddingTop);
+  overlay.style.left = `${request.clientX - insetX}px`;
+  overlay.style.top = `${request.clientY - insetY}px`;
 
   input.value = request.annotation?.text || '';
   input.focus();
@@ -103,13 +136,28 @@ function finalizeText(text) {
   if (!request || request.finalized) return;
   request.finalized = true;
 
+  let committed = false;
   if (request.annotation) {
     engine.updateText(request.annotation.id, text);
+    committed = true;
   } else if (text.trim()) {
-    engine.insertText(request.imagePoint, text);
+    // Nudge the anchor down one screen pixel: canvas text (textBaseline 'top')
+    // renders a hair higher than the same text in the input's line box.
+    engine.insertText(
+      {
+        x: request.imagePoint.x,
+        y: request.imagePoint.y + 1 / engine.displayScale,
+      },
+      text
+    );
+    committed = true;
   }
 
   closeTextOverlay();
+
+  // Land on the select tool with the new text selected, so it can be grabbed
+  // and moved right away — the same flow as after drawing a shape.
+  if (committed) selectTool('select');
 }
 
 function cancelText() {
@@ -422,7 +470,7 @@ async function init() {
     onTextEditRequest: handleTextEditRequest,
   });
   engine.thickness = parseInt(document.getElementById('thickness-slider')?.value ?? '7', 10);
-  engine.fontSize = parseInt(document.getElementById('font-size-slider')?.value ?? '20', 10);
+  engine.fontSize = parseInt(document.getElementById('font-size-slider')?.value ?? '84', 10);
 
   const available = await refreshSession();
   if (!available) return;
@@ -449,13 +497,26 @@ document.getElementById('next-frame-btn').addEventListener('click', () => naviga
 document.getElementById('toggle-hide-btn').addEventListener('click', toggleFrameHidden);
 document.getElementById('delete-frame-btn').addEventListener('click', deleteCurrentFrame);
 
+const nativeColorPicker = document.getElementById('color-picker-native');
 document.querySelectorAll('.color-btn').forEach((button) => {
   button.addEventListener('click', () => {
     engine.setColor(button.dataset.color);
     document.querySelectorAll('.color-btn').forEach((entry) => entry.classList.remove('active'));
     button.classList.add('active');
+    if (nativeColorPicker) nativeColorPicker.value = button.dataset.color;
   });
 });
+
+// Custom colour. Picking a colour clears the preset highlight unless it matches.
+if (nativeColorPicker) {
+  nativeColorPicker.addEventListener('input', (event) => {
+    const color = event.target.value;
+    engine.setColor(color);
+    document.querySelectorAll('.color-btn').forEach((entry) => {
+      entry.classList.toggle('active', entry.dataset.color === color);
+    });
+  });
+}
 
 document.getElementById('thickness-slider').addEventListener('input', (event) => {
   const thickness = parseInt(event.target.value, 10);

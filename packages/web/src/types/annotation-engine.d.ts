@@ -57,6 +57,7 @@ declare module "@shared/annotation-engine" {
     thickness: number;
     fontSize: number;
     readonly selectedAnnotation: Annotation | null;
+    readonly displayScale: number;
     readonly hasCrop: boolean;
     readonly crop: { x: number; y: number; width: number; height: number } | null;
     readonly image: HTMLImageElement | null;

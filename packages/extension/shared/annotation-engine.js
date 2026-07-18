@@ -334,9 +334,9 @@ export class AnnotationEngine {
     this.historyIndex = -1;
 
     this.tool = 'select';
-    this.color = '#ef4444';
+    this.color = '#000000';
     this.thickness = 4;
-    this.fontSize = 20;
+    this.fontSize = 84;
 
     this.selectedId = null;
     this.drag = null;
@@ -561,6 +561,19 @@ export class AnnotationEngine {
     const rect = this.canvas.getBoundingClientRect();
     const scale = rect.width > 0 ? this.canvas.width / rect.width : 1;
     return 8 * Math.max(scale, 1);
+  }
+
+  /**
+   * Ratio of on-screen size to intrinsic (image) size — the canvas is usually
+   * displayed smaller than the image via CSS (max-width). Multiply a font size
+   * in image pixels by this to get the size it actually renders on screen, so
+   * the text-input overlay can be shown at the same size as the drawn text.
+   */
+  get displayScale() {
+    const rect = this.canvas.getBoundingClientRect();
+    return rect.width > 0 && this.canvas.width > 0
+      ? rect.width / this.canvas.width
+      : 1;
   }
 
   /** Export the cropped image with annotations burned in. */

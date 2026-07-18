@@ -88,22 +88,66 @@
   box-shadow: 0 0 0 2px rgba(190, 24, 93, 0.2);
 }
 
+/* Label above, slider + value below. */
 .slider-label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.slider-label .slider-title {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.slider-label .slider-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
-  color: var(--muted);
 }
 
 .slider-label input[type="range"] {
   width: 80px;
 }
 
-.slider-label span {
-  min-width: 36px;
+/* Reserve a fixed, right-aligned slot with tabular figures so a single-digit
+   value ("7px") occupies the same width as a two-digit one ("32px") and
+   scrubbing the slider never shifts neighboring toolbar items. */
+.slider-label .slider-value {
+  display: inline-block;
+  min-width: 42px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
   font-weight: 500;
   color: var(--ink);
+}
+
+/* Native "pick any color" control, sized to match the preset swatches. */
+.color-picker-native {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 2px solid var(--line);
+  border-radius: 50%;
+  cursor: pointer;
+  background: none;
+  transition: all 0.2s;
+}
+
+.color-picker-native:hover {
+  transform: scale(1.1);
+}
+
+.color-picker-native::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.color-picker-native::-webkit-color-swatch {
+  border: none;
+  border-radius: 50%;
 }
 
 .done-btn,
@@ -155,10 +199,12 @@
   border-radius: 4px;
 }
 
+/* Anchored so the input's inner text top-left sits on the click point (the
+   TSX subtracts the input's border + padding), matching where the engine
+   draws the committed text. */
 .text-input-overlay {
   position: fixed;
   z-index: 1000;
-  transform: translate(-50%, -50%);
 }
 
 .text-input-overlay input {

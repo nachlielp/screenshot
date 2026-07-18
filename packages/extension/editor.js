@@ -45,7 +45,7 @@ async function init() {
       onTextEditRequest: handleTextEditRequest,
     });
     engine.thickness = getSliderValue('thickness-slider', 7);
-    engine.fontSize = getSliderValue('font-size-slider', 20);
+    engine.fontSize = getSliderValue('font-size-slider', 84);
 
     await engine.loadImage(capture.blob, {
       annotations: parseAnnotations(capture.annotations),
@@ -93,10 +93,17 @@ function handleSelectionChange(annotation) {
     document.querySelectorAll('.color-btn').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.color === annotation.color);
     });
+    const nativePicker = document.getElementById('color-picker-native');
+    if (nativePicker) nativePicker.value = annotation.color;
     const thicknessSlider = document.getElementById('thickness-slider');
     if (thicknessSlider) {
       thicknessSlider.value = String(annotation.thickness);
       document.getElementById('thickness-value').textContent = `${annotation.thickness}px`;
+    }
+    const fontSizeSlider = document.getElementById('font-size-slider');
+    if (fontSizeSlider && annotation.fontSize) {
+      fontSizeSlider.value = String(annotation.fontSize);
+      document.getElementById('font-size-value').textContent = `${annotation.fontSize}px`;
     }
   }
 }
@@ -120,11 +127,37 @@ function handleTextEditRequest(request) {
   const overlay = document.getElementById('text-input-overlay');
   const input = document.getElementById('text-input');
 
+  // If a text box is already open, this request came from a click meant to
+  // dismiss it (the text tool is still active). Commit what's been typed and
+  // return to the select tool instead of opening a second box — this mirrors
+  // finishing a shape, and keeps the just-placed text from being discarded.
+  if (isTextInputActive()) {
+    finalizeText(input.value);
+    return;
+  }
+
   activeTextRequest = { ...request, finalized: false };
 
-  overlay.style.left = `${request.clientX}px`;
-  overlay.style.top = `${request.clientY}px`;
   overlay.style.display = 'block';
+
+  // Match the input to the drawn text: same colour, and the same on-screen size
+  // (the canvas is displayed scaled down, so the raw font size in image pixels
+  // must be multiplied by the display scale to look identical).
+  const fontSize = request.annotation?.fontSize ?? engine.fontSize;
+  input.style.fontSize = `${fontSize * engine.displayScale}px`;
+  input.style.color = request.annotation?.color ?? engine.color;
+
+  // The engine anchors committed text with its top-left at the click point, but
+  // the characters typed in the input sit inset by the input's border + padding.
+  // Pull the overlay up-left by that inset so the typed text lies exactly on the
+  // anchor and doesn't jump when committed.
+  const inputStyle = getComputedStyle(input);
+  const insetX =
+    parseFloat(inputStyle.borderLeftWidth) + parseFloat(inputStyle.paddingLeft);
+  const insetY =
+    parseFloat(inputStyle.borderTopWidth) + parseFloat(inputStyle.paddingTop);
+  overlay.style.left = `${request.clientX - insetX}px`;
+  overlay.style.top = `${request.clientY - insetY}px`;
 
   input.value = request.annotation?.text || '';
   // Defer focus to the next tick. The click that opened this overlay is still
@@ -153,13 +186,28 @@ function finalizeText(text) {
   if (!request || request.finalized) return;
   request.finalized = true;
 
+  let committed = false;
   if (request.annotation) {
     engine.updateText(request.annotation.id, text);
+    committed = true;
   } else if (text.trim()) {
-    engine.insertText(request.imagePoint, text);
+    // Nudge the anchor down one screen pixel: canvas text (textBaseline 'top')
+    // renders a hair higher than the same text in the input's line box.
+    engine.insertText(
+      {
+        x: request.imagePoint.x,
+        y: request.imagePoint.y + 1 / engine.displayScale,
+      },
+      text
+    );
+    committed = true;
   }
 
   closeTextOverlay();
+
+  // Land on the select tool with the new text selected, so it can be grabbed
+  // and moved right away — the same flow as after drawing a shape.
+  if (committed) engine.setTool('select');
 }
 
 function cancelText() {
@@ -479,15 +527,29 @@ document.getElementById('copy-btn').addEventListener('click', copyToClipboard);
 document.getElementById('done-btn').addEventListener('click', () => finishEditing());
 document.getElementById('upload-with-logs-btn').addEventListener('click', () => finishEditing({ includeLogs: true }));
 
-// Color picker
+// Color picker — preset swatches
+const nativeColorPicker = document.getElementById('color-picker-native');
 document.querySelectorAll('.color-btn').forEach(btn => {
   btn.addEventListener('click', (e) => {
     const color = e.currentTarget.dataset.color;
     engine.setColor(color);
     document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('active'));
     e.currentTarget.classList.add('active');
+    if (nativeColorPicker) nativeColorPicker.value = color;
   });
 });
+
+// Color picker — custom color. Picking a colour clears the preset highlight
+// since the chosen colour usually isn't one of the swatches.
+if (nativeColorPicker) {
+  nativeColorPicker.addEventListener('input', (e) => {
+    const color = e.target.value;
+    engine.setColor(color);
+    document.querySelectorAll('.color-btn').forEach((b) => {
+      b.classList.toggle('active', b.dataset.color === color);
+    });
+  });
+}
 
 // Thickness control
 const thicknessSlider = document.getElementById('thickness-slider');

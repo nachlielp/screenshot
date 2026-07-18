@@ -125,6 +125,20 @@
       box-shadow: 0 0 0 2px rgba(190, 24, 93, 0.3);
     }
 
+    /* Native "pick any color" control, sized to sit next to the swatches. */
+    #color-picker-native {
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      border: 2px solid #d1d5db;
+      border-radius: 50%;
+      cursor: pointer;
+      background: none;
+      overflow: hidden;
+    }
+    #color-picker-native::-webkit-color-swatch-wrapper { padding: 0; }
+    #color-picker-native::-webkit-color-swatch { border: none; border-radius: 50%; }
+
     #canvas-container {
       flex: 1;
       display: flex;
@@ -157,7 +171,7 @@
 
     #text-input {
       font-family: Arial, sans-serif; /* matches canvas text rendering — keep */
-      font-size: 20px;
+      font-size: 84px;
       padding: 4px 8px;
       border: 2px solid var(--brand);
       background: #fff;
@@ -372,34 +386,36 @@
 
       <div class="tool-separator"></div>
 
-      <div style="display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 13px;">
-        <label for="thickness-slider" style="display: flex; align-items: center; gap: 6px;">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M4 12h16"/></svg>
+      <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; color: var(--ink); font-size: 13px;">
+        <label for="thickness-slider" style="font-weight: 800;" title="Line width">Line&nbsp;width</label>
+        <div style="display: flex; align-items: center; gap: 6px;">
           <input type="range" id="thickness-slider" min="5" max="14" value="7" style="width: 80px;">
-        </label>
-        <span id="thickness-value" style="min-width: 25px;">7px</span>
+          <span id="thickness-value" style="display: inline-block; min-width: 34px; text-align: right; font-variant-numeric: tabular-nums;">7px</span>
+        </div>
       </div>
 
       <div class="tool-separator"></div>
 
-      <div style="display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 13px;">
-        <label for="font-size-slider" style="display: flex; align-items: center; gap: 6px; font-weight: 800;">
-          <span>A</span>
-          <input type="range" id="font-size-slider" min="12" max="48" value="20" style="width: 80px;">
-        </label>
-        <span id="font-size-value" style="min-width: 30px;">20px</span>
+      <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; color: var(--ink); font-size: 13px;">
+        <label for="font-size-slider" style="font-weight: 800;" title="Text size">Text&nbsp;size</label>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <input type="range" id="font-size-slider" min="7" max="84" value="84" style="width: 80px;">
+          <span id="font-size-value" style="display: inline-block; min-width: 34px; text-align: right; font-variant-numeric: tabular-nums;">84px</span>
+        </div>
       </div>
 
       <div class="tool-separator"></div>
 
       <div class="color-picker">
-        <button class="color-btn active" data-color="#ef4444" style="background: #ef4444;" title="Red"></button>
+        <button class="color-btn active" data-color="#000000" style="background: #000000;" title="Black"></button>
+        <button class="color-btn" data-color="#ef4444" style="background: #ef4444;" title="Red"></button>
         <button class="color-btn" data-color="#f59e0b" style="background: #f59e0b;" title="Orange"></button>
         <button class="color-btn" data-color="#eab308" style="background: #eab308;" title="Yellow"></button>
         <button class="color-btn" data-color="#22c55e" style="background: #22c55e;" title="Green"></button>
         <button class="color-btn" data-color="#3b82f6" style="background: #3b82f6;" title="Blue"></button>
         <button class="color-btn" data-color="#8b5cf6" style="background: #8b5cf6;" title="Purple"></button>
         <button class="color-btn" data-color="#ffffff" style="background: #ffffff;" title="White"></button>
+        <input type="color" id="color-picker-native" value="#000000" title="Pick a custom color" />
       </div>
 
       <div class="tool-separator"></div>
